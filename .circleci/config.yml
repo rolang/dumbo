@@ -8,6 +8,7 @@ executors:
   docker:
     docker:
       - image: cimg/openjdk:17.0
+    resource_class: medium
 
   docker-test:
     docker:
@@ -15,6 +16,7 @@ executors:
       - image: postgres:15-alpine
         environment:
           POSTGRES_PASSWORD: postgres
+    resource_class: medium
 
 commands:
 
