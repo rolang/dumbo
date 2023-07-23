@@ -10,22 +10,9 @@ ThisBuild / licenses     := Seq(License.MIT)
 ThisBuild / developers := List(
   Developer(id = "rolang", name = "Roman Langolf", email = "rolang@pm.me", url = url("https://rolang.dev"))
 )
-ThisBuild / versionScheme        := Some("early-semver")
-ThisBuild / description          := "Simple database migration tool for Scala + Postgres"
-ThisBuild / homepage             := Some(url("https://github.com/rolang/dumbo"))
-ThisBuild / pomIncludeRepository := { _ => false }
-ThisBuild / publishMavenStyle    := true
-ThisBuild / publishTo := {
-  val nexus = "https://oss.sonatype.org/"
-  if (isSnapshot.value) Some("snapshots" at nexus + "content/repositories/snapshots")
-  else Some("releases" at nexus + "service/local/staging/deploy/maven2")
-}
-ThisBuild / credentials += {
-  for {
-    username <- sys.env.get("SONATYPE_USERNAME")
-    apiKey   <- sys.env.get("SONATYPE_PASSWORD")
-  } yield Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", username, apiKey)
-}.getOrElse(Credentials(Path.userHome / ".sbt" / "sonatype_credentials"))
+ThisBuild / versionScheme := Some("early-semver")
+ThisBuild / description   := "Simple database migration tool for Scala + Postgres"
+ThisBuild / homepage      := Some(url("https://github.com/rolang/dumbo"))
 
 ThisBuild / scalafmt          := true
 ThisBuild / scalafmtSbtCheck  := true
@@ -58,14 +45,6 @@ lazy val commonSettings = List(
     else
       Seq("-Xsource:3")
   },
-  version ~= (v => if (v.contains('+')) s"${v.replace('+', '-')}-SNAPSHOT" else v),
-)
-
-val noPublishSettings = List(
-  publish         := {},
-  publishLocal    := {},
-  publishArtifact := false,
-  publish / skip  := true,
 )
 
 lazy val root =
@@ -73,7 +52,7 @@ lazy val root =
     .dependsOn(core.jvm, core.native)
     .aggregate(core.jvm, core.native)
     .settings(commonSettings)
-    .settings(noPublishSettings)
+    .settings(publish / skip := true)
 
 lazy val skunkVersion = "0.6.0"
 lazy val core = crossProject(JVMPlatform, NativePlatform)
@@ -95,9 +74,9 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .in(file("modules/tests"))
   .dependsOn(core)
-  .settings(noPublishSettings)
   .settings(commonSettings)
   .settings(
+    publish / skip := true,
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
       "org.scalameta" %%% "munit"             % "1.0.0-M7",
@@ -120,9 +99,9 @@ lazy val postgresqlVersion = "42.6.0"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
   .dependsOn(core.jvm, tests.jvm % "compile->compile;test->test")
-  .settings(noPublishSettings)
   .settings(commonSettings)
   .settings(
+    publish / skip := true,
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
       "org.flywaydb"   % "flyway-core" % flywayVersion,
@@ -134,8 +113,8 @@ lazy val testsFlyway = project
 lazy val example = project
   .in(file("modules/example"))
   .dependsOn(core.jvm)
-  .settings(noPublishSettings)
   .settings(commonSettings)
   .settings(
-    scalacOptions -= "-Xfatal-warnings"
+    publish / skip := true,
+    scalacOptions -= "-Xfatal-warnings",
   )
