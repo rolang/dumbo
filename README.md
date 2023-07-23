@@ -1,5 +1,10 @@
 # Dumbo
 
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/rolang/dumbo/tree/main.svg?style=svg&circle-token=833fe643e164b958545396b0a12f0d1800b55784)](https://dl.circleci.com/status-badge/redirect/gh/rolang/dumbo/tree/main)
+[![Sonatype Releases](https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.rolang/dumbo_2.13.svg?label=Sonatype%20Release)](https://oss.sonatype.org/content/repositories/releases/dev/rolang/dumbo_2.13/)
+[![Sonatype Snapshots](https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.rolang/dumbo_2.13.svg?label=Sonatype%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/dev/rolang/dumbo_2.13/)
+[![javadoc](https://javadoc.io/badge2/dev.rolang/dumbo-docs_2.13/javadoc.svg)](https://javadoc.io/doc/dev.rolang/dumbo-docs_2.13)
+
 ![Logo](./docs/assets/logo.png)
 
 Simple database migration tool for Scala + Postgres with [skunk](https://typelevel.org/skunk/) that can be deployed on JVM and Native.  

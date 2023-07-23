@@ -45,7 +45,7 @@ jobs:
       - restore_dependencies
       - run:
           name: Tests JVM
-          command: sbt '+testsJVM/test; +testsFlyway/test; example/compile'
+          command: sbt 'check; +testsJVM/test; +testsFlyway/test; example/compile'
       - store_dependencies
 
   publish:
@@ -54,7 +54,7 @@ jobs:
       - checkout
       - restore_dependencies
       - run:
-          command: sbt +publish
+          command: sbt +publishSigned
 
 workflows:
 
@@ -64,7 +64,7 @@ workflows:
           filters:
             branches:
               ignore:
-                - master
+                - main
 
   integration:
     jobs:
@@ -72,11 +72,17 @@ workflows:
           filters:
             branches:
               only:
-                - master
-
+                - main
+      - publish:
+          context:
+            - rolang-release
+          requires:
+            - test
   release:
     jobs:
       - publish:
+          context:
+            - rolang-release
           filters:
             tags:
               only: /v\d+\.\d+\.\d+/

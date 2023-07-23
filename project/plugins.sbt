@@ -5,3 +5,4 @@ addSbtPlugin("org.portable-scala"        % "sbt-scala-native-crossproject" % "1.
 addSbtPlugin("ch.epfl.scala"             % "sbt-scalafix"                  % "0.11.0")
 addSbtPlugin("io.github.davidgregory084" % "sbt-tpolecat"                  % "0.4.3")
 addSbtPlugin("org.jmotor.sbt"            % "sbt-dependency-updates"        % "1.2.7")
+addSbtPlugin("com.github.sbt"            % "sbt-pgp"                       % "2.2.1")

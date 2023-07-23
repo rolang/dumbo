@@ -8,13 +8,24 @@ ThisBuild / crossScalaVersions := Seq(`scala-2.12`, `scala-2.13`, `scala-3`)
 ThisBuild / organization := "dev.rolang"
 ThisBuild / licenses     := Seq(License.MIT)
 ThisBuild / developers := List(
-  Developer(
-    id = "rolang",
-    name = "Roman Langolf",
-    email = "rolang@pm.me",
-    url = url("https://rolang.dev"),
-  )
+  Developer(id = "rolang", name = "Roman Langolf", email = "rolang@pm.me", url = url("https://rolang.dev"))
 )
+ThisBuild / versionScheme        := Some("early-semver")
+ThisBuild / description          := "Simple database migration tool for Scala + Postgres"
+ThisBuild / homepage             := Some(url("https://github.com/rolang/dumbo"))
+ThisBuild / pomIncludeRepository := { _ => false }
+ThisBuild / publishMavenStyle    := true
+ThisBuild / publishTo := {
+  val nexus = "https://oss.sonatype.org/"
+  if (isSnapshot.value) Some("snapshots" at nexus + "content/repositories/snapshots")
+  else Some("releases" at nexus + "service/local/staging/deploy/maven2")
+}
+ThisBuild / credentials += {
+  for {
+    username <- sys.env.get("SONATYPE_USERNAME")
+    apiKey   <- sys.env.get("SONATYPE_PASSWORD")
+  } yield Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", username, apiKey)
+}.getOrElse(Credentials(Path.userHome / ".sbt" / "sonatype_credentials"))
 
 ThisBuild / scalafmt          := true
 ThisBuild / scalafmtSbtCheck  := true
@@ -57,14 +68,6 @@ val noPublishSettings = List(
   publish / skip  := true,
 )
 
-val releaseSettings = List(
-  publishTo := {
-    val nexus = "https://oss.sonatype.org/"
-    if (isSnapshot.value) Some("snapshots" at nexus + "content/repositories/snapshots")
-    else Some("releases" at nexus + "service/local/staging/deploy/maven2")
-  }
-)
-
 lazy val root =
   (project in file("."))
     .dependsOn(core.jvm, core.native)
@@ -83,7 +86,6 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     ),
   )
   .settings(commonSettings)
-  .settings(releaseSettings)
   .jvmSettings(
     javacOptions ++= Seq("-source", "17", "-target", "17"),
     Compile / scalacOptions ++= Seq("-release:17"),
