@@ -1,0 +1,17 @@
+target/
+.bsp/
+
+.settings
+.project
+.classpath
+
+.idea
+*.iml
+
+.DS_Store
+.env
+
+.metals/
+.vscode/
+.bloop/
+metals.sbt

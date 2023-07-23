@@ -1,0 +1,82 @@
+version: 2.1
+
+.sbt_cache_key: &sbt_cache_key
+                  deps-v1-{{ checksum "project/build.properties" }}-{{ checksum "build.sbt" }}-{{ checksum "project/plugins.sbt" }}
+
+executors:
+
+  docker:
+    docker:
+      - image: cimg/openjdk:17.0
+
+  docker-test:
+    docker:
+      - image: cimg/openjdk:17.0
+      - image: postgres:15-alpine
+        environment:
+          POSTGRES_PASSWORD: postgres
+
+commands:
+
+  store_dependencies:
+    steps:
+      - save_cache:
+          name: Storing dependency cache
+          key: *sbt_cache_key
+          paths:
+            - ~/.ivy2
+            - ~/.sbt
+            - ~/.cache/coursier
+
+  restore_dependencies:
+    steps:
+      - restore_cache:
+          name: Restoring dependency cache
+          key: *sbt_cache_key
+
+jobs:
+
+  test:
+    executor: docker-test
+    steps:
+      - checkout
+      - restore_dependencies
+      - run:
+          name: Tests JVM
+          command: sbt '+testsJVM/test; +testsFlyway/test; example/compile'
+      - store_dependencies
+
+  publish:
+    executor: docker
+    steps:
+      - checkout
+      - restore_dependencies
+      - run:
+          command: sbt +publish
+
+workflows:
+
+  pull_request:
+    jobs:
+      - test:
+          filters:
+            branches:
+              ignore:
+                - master
+
+  integration:
+    jobs:
+      - test:
+          filters:
+            branches:
+              only:
+                - master
+
+  release:
+    jobs:
+      - publish:
+          filters:
+            tags:
+              only: /v\d+\.\d+\.\d+/
+            branches:
+              ignore: /.*/
