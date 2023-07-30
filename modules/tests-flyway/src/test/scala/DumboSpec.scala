@@ -11,6 +11,8 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 
 class DumboSpec extends ffstest.FTest {
+  override val postgresPort: Int = 5433
+
   def flywayMigrate(defaultSchema: String, sourcesPath: Path, schemas: List[String] = Nil): IO[MigrateResult] = IO(
     Flyway
       .configure()
@@ -18,7 +20,7 @@ class DumboSpec extends ffstest.FTest {
       .schemas(schemas*)
       .locations(sourcesPath.toString)
       .dataSource(
-        s"jdbc:postgresql://localhost:5432/postgres?ssl=false",
+        s"jdbc:postgresql://localhost:$postgresPort/postgres?ssl=false",
         "postgres",
         "postgres",
       )

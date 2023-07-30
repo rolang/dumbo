@@ -14,12 +14,14 @@ import skunk.implicits.*
 import skunk.{Session, *}
 
 trait FTest extends CatsEffectSuite with FTestPlatform {
+  def postgresPort: Int = 5432
+
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
   def session: Resource[IO, Session[IO]] = Session
     .single[IO](
       host = "localhost",
-      port = 5432,
+      port = postgresPort,
       user = "postgres",
       database = "postgres",
       password = Some("postgres"),
