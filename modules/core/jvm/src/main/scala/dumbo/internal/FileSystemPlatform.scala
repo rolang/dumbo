@@ -1,7 +1,11 @@
+// Copyright (c) 2023 by Roman Langolf
+// This software is licensed under the MIT License (MIT).
+// For more information see LICENSE or https://opensource.org/licenses/MIT
+
 package dumbo.internal
 
 import java.net.{URI, URL}
-import java.nio.file.{FileSystem, FileSystems, Files, Path as JPath}
+import java.nio.file.{FileSystem, FileSystems, Files, Paths as JPaths}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
@@ -52,7 +56,7 @@ private[dumbo] trait FileSystemPlatform {
                 val baseDir =
                   Try(u.toURI()).toOption.map { uri =>
                     // given absolutePath = /a/b/c/d and sourceDir = c/d return /a/b as baseDir
-                    Path(JPath.of(uri).toString().stripSuffix(sourceDir.toString))
+                    Path(JPaths.get(uri).toString().stripSuffix(sourceDir.toString))
                   }
                 FsPlatform.fileFs(sourceDir = sourceDir, baseDir = baseDir)
               case multiple =>

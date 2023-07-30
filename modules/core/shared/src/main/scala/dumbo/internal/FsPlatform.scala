@@ -1,7 +1,10 @@
+// Copyright (c) 2023 by Roman Langolf
+// This software is licensed under the MIT License (MIT).
+// For more information see LICENSE or https://opensource.org/licenses/MIT
+
 package dumbo.internal
 
 import java.net.URI
-import java.nio.file.Path as JPath
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -22,7 +25,7 @@ private[dumbo] trait FsPlatform[F[_]] {
 private[dumbo] object FsPlatform extends FileSystemPlatform {
   def fileFs[F[_]: Fs2Files](sourceDir: Path, baseDir: Option[Path] = None): Resource[F, FsPlatform[F]] =
     Resource.pure {
-      val base = baseDir.getOrElse(Path.fromNioPath(JPath.of(new java.io.File("").toURI())))
+      val base = baseDir.getOrElse(Path.fromNioPath(java.nio.file.Paths.get(new java.io.File("").toURI())))
 
       @inline def absolutePath(p: Path) = if (p.isAbsolute) p else base / p
 
