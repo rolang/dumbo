@@ -5,8 +5,8 @@ CREATE TABLE test (
   -- ignore this...
   id SERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  name text,
-  name_2 varchar NOT NULL,
+  name text, -- ignore this too
+  name_2 varchar NOT NULL, -- and this as well
   number int,
   template test_enum_type
 );

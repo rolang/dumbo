@@ -61,9 +61,11 @@ class History(tableName: String) {
       success         BOOL NOT NULL
     )""".command
 
-  val loadAllQuery: Query[Void, HistoryEntry] = sql"""
+  val loadAllQuery: Query[Int, HistoryEntry] = sql"""
     SELECT #${HistoryEntry.fieldNames}
-    FROM #${tableName} ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
+    FROM #${tableName} WHERE installed_rank >= $int4 ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
+
+  val findLatestRank: Query[Void, Option[Int]] = sql"SELECT MAX(installed_rank) FROM #${tableName}".query(int4.opt)
 
   val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = sql"""
     INSERT INTO #${tableName}
