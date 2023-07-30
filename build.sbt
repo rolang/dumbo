@@ -31,7 +31,7 @@ ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List("apt update && apt install libutf8proc-dev"),
+    commands = List("sudo apt update && sudo apt install libutf8proc-dev"),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
