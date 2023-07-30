@@ -1,6 +1,10 @@
+// Copyright (c) 2023 by Roman Langolf
+// This software is licensed under the MIT License (MIT).
+// For more information see LICENSE or https://opensource.org/licenses/MIT
+
 package dumbo
-import dumbo.internal.MultipleResoucesException
 import cats.effect.IO
+import dumbo.internal.MultipleResoucesException
 import fs2.io.file.Path
 
 class DumboJvmSpec extends ffstest.FTest {

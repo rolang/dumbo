@@ -2,6 +2,8 @@ lazy val `scala-2.12` = "2.12.18"
 lazy val `scala-2.13` = "2.13.11"
 lazy val `scala-3`    = "3.3.0"
 
+ThisBuild / tlBaseVersion      := "0.1"
+ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-2.13`
 ThisBuild / crossScalaVersions := Seq(`scala-2.12`, `scala-2.13`, `scala-3`)
 
@@ -14,22 +16,55 @@ ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / description   := "Simple database migration tool for Scala + Postgres"
 ThisBuild / homepage      := Some(url("https://github.com/rolang/dumbo"))
 
-ThisBuild / scalafmt          := true
-ThisBuild / scalafmtSbtCheck  := true
-ThisBuild / semanticdbEnabled := true
-ThisBuild / semanticdbOptions ++= { if (scalaVersion.value == `scala-3`) Seq() else Seq("-P:semanticdb:synthetics:on") }
+ThisBuild / scalafmt                   := true
+ThisBuild / scalafmtSbtCheck           := true
+ThisBuild / semanticdbEnabled          := true
 ThisBuild / semanticdbVersion          := scalafixSemanticdb.revision // use Scalafix compatible version
 ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value)
 ThisBuild / scalafixDependencies ++= List(
-  "com.github.liancheng" %% "organize-imports" % "0.5.0",
-  "com.github.vovapolu"  %% "scaluzzi"         % "0.1.23",
+  "com.github.vovapolu" %% "scaluzzi" % "0.1.23"
 )
+
+// githubWorkflow
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / tlCiHeaderCheck            := true
+ThisBuild / tlCiScalafixCheck          := false
+ThisBuild / githubWorkflowBuildPreamble ++= Seq(
+  WorkflowStep.Run(
+    commands = List("sudo apt update && sudo apt install libutf8proc-dev"),
+    cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
+    name = Some("Install native dependencies (ubuntu)"),
+  )
+)
+ThisBuild / githubWorkflowJobSetup ++= Seq(
+  WorkflowStep.Run(
+    commands = List("docker-compose up -d"),
+    name = Some("Start up Postgres"),
+  )
+)
+ThisBuild / githubWorkflowBuild := {
+  WorkflowStep.Sbt(
+    List("scalafixAll --check"),
+    name = Some("Check scalafix lints"),
+    cond = Some("(matrix.project == 'rootJVM') && (matrix.scala == '2.13')"),
+  ) +: (ThisBuild / githubWorkflowBuild).value
+}
 
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("fix", "; all scalafixAll; all scalafmtSbt scalafmtAll")
 addCommandAlias("check", "; scalafmtSbtCheck; scalafmtCheckAll; scalafixAll --check")
 
 lazy val commonSettings = List(
+  // Headers
+  headerMappings := headerMappings.value + (HeaderFileType.scala -> HeaderCommentStyle.cppStyleLineComment),
+  headerLicense := Some(
+    HeaderLicense.Custom(
+      """|Copyright (c) 2023 by Roman Langolf
+         |This software is licensed under the MIT License (MIT).
+         |For more information see LICENSE or https://opensource.org/licenses/MIT
+         |""".stripMargin
+    )
+  ),
   libraryDependencies ++= {
     if (scalaVersion.value == `scala-3`)
       Seq()
@@ -47,16 +82,15 @@ lazy val commonSettings = List(
   },
 )
 
-lazy val root =
-  (project in file("."))
-    .dependsOn(core.jvm, core.native)
-    .aggregate(core.jvm, core.native)
-    .settings(commonSettings)
-    .settings(publish / skip := true)
+lazy val root = tlCrossRootProject
+  .settings(name := "dumbo")
+  .aggregate(core, tests, testsFlyway, example)
+  .settings(commonSettings)
 
 lazy val skunkVersion = "0.6.0"
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
+  .enablePlugins(AutomateHeaderPlugin)
   .in(file("modules/core"))
   .settings(
     name := "dumbo",
@@ -65,13 +99,10 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     ),
   )
   .settings(commonSettings)
-  .jvmSettings(
-    javacOptions ++= Seq("-source", "17", "-target", "17"),
-    Compile / scalacOptions ++= Seq("-release:17"),
-  )
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
+  .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
   .in(file("modules/tests"))
   .dependsOn(core)
   .settings(commonSettings)
@@ -94,10 +125,11 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
   )
 
-lazy val flywayVersion     = "9.20.0"
+lazy val flywayVersion     = "9.21.1"
 lazy val postgresqlVersion = "42.6.0"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
+  .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
   .dependsOn(core.jvm, tests.jvm % "compile->compile;test->test")
   .settings(commonSettings)
   .settings(
@@ -112,6 +144,7 @@ lazy val testsFlyway = project
 
 lazy val example = project
   .in(file("modules/example"))
+  .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
