@@ -57,7 +57,7 @@ jobs:
 
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
-        run: apt update && apt install libutf8proc-dev
+        run: sudo apt update && sudo apt install libutf8proc-dev
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
