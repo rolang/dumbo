@@ -37,17 +37,48 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      res       <- flywayMigrate(schema, Path("flyway/test_1"))
+      res       <- flywayMigrate(schema, Path("db/test_1"))
       _          = assert(res.migrationsExecuted == 3)
-      flywayRes <- flywayMigrate(schema, Path("flyway/test_1_changed_checksum")).attempt
+      flywayRes <- flywayMigrate(schema, Path("db/test_1_changed_checksum")).attempt
       _          = assert(flywayRes.left.exists(_.getMessage().contains("checksum mismatch")))
-      dumboRes  <- dumboMigrate(schema, Path("flyway/test_1_changed_checksum")).attempt
+      dumboRes  <- dumboMigrate(schema, Path("db/test_1_changed_checksum")).attempt
       _          = assert(dumboRes.left.exists(_.getMessage().contains("checksum mismatch")))
     } yield ()
   }
 
+  dbTest("Same behaviour on missing file") {
+    val schema = "schema_1"
+
+    for {
+      res       <- flywayMigrate(schema, Path("db/test_1"))
+      _          = assert(res.migrationsExecuted == 3)
+      flywayRes <- flywayMigrate(schema, Path("db/test_1_missing_file")).attempt
+      _          = assert(flywayRes.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
+      dumboRes  <- dumboMigrate(schema, Path("db/test_1_missing_file")).attempt
+      _          = assert(dumboRes.left.exists(_.isInstanceOf[dumbo.exception.DumboValidationException]))
+      _          = assert(dumboRes.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
+    } yield ()
+  }
+
+  dbTest("Same behaviour on failing migration") {
+    val schema = "schema_1"
+
+    for {
+      flywayRes     <- flywayMigrate(schema, Path("db/test_failing_sql")).attempt
+      _              = assert(flywayRes.isLeft)
+      _              = assert(flywayRes.left.exists(_.getMessage().contains("relation \"test\" already exists")))
+      historyFlyway <- loadHistory(schema)
+      _             <- dropSchemas
+      dumboRes      <- dumboMigrate(schema, Path("db/test_failing_sql")).attempt
+      _              = assert(dumboRes.isLeft)
+      _              = assert(dumboRes.left.exists(_.getMessage().contains("Relation \"test\" already exists")))
+      historyDumbo  <- loadHistory(schema)
+      _              = assertEqualHistory(historyFlyway, historyDumbo)
+    } yield ()
+  }
+
   dbTest("Dumbo is compatible with Flyway history state") {
-    val path: Path    = Path("flyway/test_1")
+    val path: Path    = Path("db/test_1")
     val defaultSchema = "test_a"
 
     for {
@@ -63,7 +94,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Flyway is compatible with Dumbo history state") {
-    val path: Path    = Path("flyway/test_1")
+    val path: Path    = Path("db/test_1")
     val defaultSchema = "test_a"
 
     for {
@@ -79,7 +110,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Updates for different default schemas from Flyway to Dumbo") {
-    val path: Path = Path("flyway/test_1")
+    val path: Path = Path("db/test_1")
     val schemaA    = "test_a"
     val schemaB    = "test_b"
 
@@ -96,7 +127,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Updates for different default schemas from Dumbo to Flyway") {
-    val path: Path = Path("flyway/test_1")
+    val path: Path = Path("db/test_1")
     val schemaA    = "test_a"
     val schemaB    = "test_b"
 
@@ -114,7 +145,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Updates for multiple schemas with missing schema config") {
-    val path: Path = Path("flyway/test_three_schemas")
+    val path: Path = Path("db/test_three_schemas")
     val schemas    = NonEmptyList.of("schema_1", "schema_2")
 
     for {
@@ -130,7 +161,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Updates for multiple schemas") {
-    val path: Path = Path("flyway/test_three_schemas")
+    val path: Path = Path("db/test_three_schemas")
     val schemas    = NonEmptyList.of("schema_1", "schema_2", "schema_3")
 
     for {
@@ -146,7 +177,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Same behaviour on non-transactional operations") {
-    val path: Path = Path("flyway/test_non_transactional")
+    val path: Path = Path("db/test_non_transactional")
     val schema     = "schema_1"
 
     for {

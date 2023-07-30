@@ -26,14 +26,20 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     )
 
   def loadHistory(schema: String, tableName: String = "flyway_schema_history"): IO[List[HistoryEntry]] =
-    session.use(_.execute(History(s"$schema.$tableName").loadAllQuery))
+    session.use(_.execute(History(s"$schema.$tableName").loadAllQuery)(0))
 
-  def dumboMigrate(defaultSchema: String, sourcesPath: Path, schemas: List[String] = Nil): IO[Dumbo.MigrationResult] =
+  def dumboMigrate(
+    defaultSchema: String,
+    sourcesPath: Path,
+    schemas: List[String] = Nil,
+    validateOnMigrate: Boolean = true,
+  ): IO[Dumbo.MigrationResult] =
     session.use(
       Dumbo[IO](
         sourceDir = resourcesPath(sourcesPath),
         defaultSchema = defaultSchema,
         schemas = schemas.toSet,
+        validateOnMigrate = validateOnMigrate,
       ).migrate
     )
 
