@@ -9,6 +9,8 @@ import cats.implicits.*
 import fs2.io.file.Path
 
 class DumboSpec extends ffstest.FTest {
+  override val postgresPort: Int = 5432
+
   def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit = {
     def toCompare(h: HistoryEntry) =
       (h.installedRank, h.version, h.script, h.checksum, h.`type`, h.installedBy, h.success)
@@ -23,10 +25,8 @@ class DumboSpec extends ffstest.FTest {
       for {
         _              <- dropSchemas
         res            <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, Path("db/test_1"))).attempt
-        _               = res.left.foreach(e => println(s"Error: $e"))
         _               = assert(res.isRight)
         totalMigrations = res.map(_.map(_.migrationsExecuted).sum).getOrElse(0)
-        _               = println(s"Total migrations: $totalMigrations")
         _               = assert(totalMigrations == 3)
         history        <- loadHistory(schema)
         _               = assert(history.length == 4)
