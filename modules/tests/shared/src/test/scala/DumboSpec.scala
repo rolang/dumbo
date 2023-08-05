@@ -168,13 +168,15 @@ class DumboSpec extends ffstest.FTest {
     } yield ()
   }
 
-  dbTest("fail on files with same versions") {
+  test("fail on files with same versions") {
     for {
       result <- Dumbo[IO](resourcesPath(Path("db/test_duplicate_versions"))).listMigrationFiles
       _ = result match {
             case Invalid(errs) =>
               assert(errs.toList.exists { err =>
                 val message = err.getMessage()
+
+                println(s"Version conflict error message:\n$message")
 
                 message.contains("Found more than one migration with versions 0.1, 1") &&
                   message.contains("V01__test.sql") &&
