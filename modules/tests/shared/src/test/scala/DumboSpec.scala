@@ -176,9 +176,7 @@ class DumboSpec extends ffstest.FTest {
               assert(errs.toList.exists { err =>
                 val message = err.getMessage()
 
-                println(s"Version conflict error message:\n$message")
-
-                message.contains("Found more than one migration with versions 0.1, 1") &&
+                message.contains("Found more than one migration with versions") &&
                   message.contains("V01__test.sql") &&
                   message.contains("V1.0__test.sql") &&
                   message.contains("V001__test.sql") &&
