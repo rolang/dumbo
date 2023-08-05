@@ -11,7 +11,18 @@ Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway 
 
 Currently supports:
  - Versioned Migrations in the filesystem as specified by Flyway:  
-  ![Versioned Migrayions](./docs/assets/versioned_migrations.png)
+  ![Versioned Migrayions](./docs/assets/versioned_migrations.png)  
+
+  Each versioned migration must be assigned a unique version.  
+  A simple increasing integer or any version is valid as long as it conforms to the usual dotted notation:
+  - 1
+  - 001
+  - 5.2
+  - 1.2.3.4.5.6.7.8.9
+  - 205.68
+  - 20130115113556
+  - 2013.1.15.11.35.56
+  - 2013.01.15.11.35.56
 
 ## Usage example
 Examples can be viewed in [modules/example](./modules/example/).  
