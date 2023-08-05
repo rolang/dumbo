@@ -4,8 +4,10 @@
 
 package ffstest
 
+import cats.data.ValidatedNec
 import cats.effect.{IO, Resource}
 import cats.implicits.*
+import dumbo.exception.DumboValidationException
 import dumbo.{Dumbo, History, HistoryEntry}
 import fs2.io.file.Path
 import munit.CatsEffectSuite
@@ -28,7 +30,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     )
 
   def loadHistory(schema: String, tableName: String = "flyway_schema_history"): IO[List[HistoryEntry]] =
-    session.use(_.execute(History(s"$schema.$tableName").loadAllQuery)(0))
+    session.use(_.execute(History(s"$schema.$tableName").loadAllQuery))
 
   def dumboMigrate(
     defaultSchema: String,
@@ -43,6 +45,19 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
         schemas = schemas.toSet,
         validateOnMigrate = validateOnMigrate,
       ).migrate
+    )
+
+  def validateWithAppliedMigrations(
+    defaultSchema: String,
+    sourcesPath: Path,
+    schemas: List[String] = Nil,
+  ): IO[ValidatedNec[DumboValidationException, Unit]] =
+    session.use(
+      Dumbo[IO](
+        sourceDir = resourcesPath(sourcesPath),
+        defaultSchema = defaultSchema,
+        schemas = schemas.toSet,
+      ).validateWithAppliedMigrations
     )
 
   def dropSchemas: IO[Unit] = session.use { s =>
