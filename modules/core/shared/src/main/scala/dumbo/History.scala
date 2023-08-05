@@ -20,11 +20,12 @@ final case class HistoryEntry(
   installedOn: LocalDateTime,
   executionTimeMs: Int,
   success: Boolean,
-)
+) {
+  def sourceFileVersion: Option[SourceFileVersion] = version.flatMap(SourceFileVersion.fromString(_).toOption)
+}
 
 object HistoryEntry {
   final case class New(
-    installedRank: Int,
     version: String,
     description: String,
     `type`: String,
@@ -36,7 +37,7 @@ object HistoryEntry {
 
   object New {
     val codec: Codec[New] =
-      (int4 *: varchar(50) *: varchar(200) *: varchar(20) *: varchar(1000) *: int4.opt *: int4 *: bool)
+      (varchar(50) *: varchar(200) *: varchar(20) *: varchar(1000) *: int4.opt *: int4 *: bool)
         .to[New]
   }
 
@@ -65,18 +66,24 @@ class History(tableName: String) {
       success         BOOL NOT NULL
     )""".command
 
-  val loadAllQuery: Query[Int, HistoryEntry] = sql"""
+  val loadAllQuery: Query[Void, HistoryEntry] = sql"""
     SELECT #${HistoryEntry.fieldNames}
-    FROM #${tableName} WHERE installed_rank >= $int4 ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
+    FROM #${tableName} ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
 
-  val findLatestRank: Query[Void, Option[Int]] = sql"SELECT MAX(installed_rank) FROM #${tableName}".query(int4.opt)
+  val findLatestInstalled: Query[Void, Option[HistoryEntry]] =
+    sql"""SELECT #${HistoryEntry.fieldNames}
+          FROM #${tableName} ORDER BY installed_rank DESC LIMIT 1""".query(HistoryEntry.codec.opt)
 
-  val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = sql"""
+  val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = {
+    val nextRank = sql"(SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM #${tableName})"
+
+    sql"""
     INSERT INTO #${tableName}
     (installed_rank, version, description, type, script, checksum, execution_time, success, installed_on, installed_by)
-    VALUES (${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER)
+    VALUES ($nextRank, ${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER)
     RETURNING #${HistoryEntry.fieldNames}"""
-    .query(HistoryEntry.codec)
+      .query(HistoryEntry.codec)
+  }
 
   val insertSchemaEntry: Command[String] = sql"""
     INSERT INTO #${tableName}

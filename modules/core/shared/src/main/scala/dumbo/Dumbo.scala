@@ -7,14 +7,13 @@ package dumbo
 import java.nio.charset.StandardCharsets
 import java.util.zip.CRC32
 
-import scala.util.matching.Regex
-
-import cats.Applicative
-import cats.data.NonEmptyList
+import cats.data.Validated.{Invalid, Valid}
+import cats.data.{NonEmptyChain, NonEmptyList, ValidatedNec}
 import cats.effect.Sync
 import cats.effect.kernel.Ref
 import cats.effect.std.Console
 import cats.implicits.*
+import dumbo.exception.DumboValidationException
 import dumbo.internal.FsPlatform
 import fs2.Stream
 import fs2.io.file.*
@@ -40,7 +39,9 @@ class Dumbo[F[_]: Sync: Console: Files](
   private def transact(source: SourceFile, fs: FsPlatform[F], session: Session[F]): F[HistoryEntry] =
     for {
       _ <-
-        Console[F].println(s"""Migrating schema "$defaultSchema" to version ${source.rank} - ${source.description}""")
+        Console[F].println(
+          s"""Migrating schema "$defaultSchema" to version ${source.versionRaw} - ${source.scriptDescription}"""
+        )
 
       statements <- fs.readUtf8Lines(source.path)
                       .compile
@@ -61,9 +62,8 @@ class Dumbo[F[_]: Sync: Console: Files](
       entry <- session
                  .unique(dumboHistory.insertSQLEntry)(
                    HistoryEntry.New(
-                     installedRank = source.rank,
-                     version = source.rank.toString(),
-                     description = source.description,
+                     version = source.versionRaw,
+                     description = source.scriptDescription,
                      `type` = "SQL",
                      script = source.path.fileName.toString,
                      checksum = Some(source.checksum),
@@ -71,59 +71,41 @@ class Dumbo[F[_]: Sync: Console: Files](
                      success = true,
                    )
                  )
-      _ <- Console[F].println(s"Migration to version ${source.rank} - ${source.description} completed")
+      _ <- Console[F].println(s"Migration to version ${source.versionRaw} - ${source.scriptDescription} completed")
     } yield entry
 
   private def validationGuard(session: Session[F], sourceFiles: List[SourceFile]) =
-    sourceFiles match {
-      case head :: _ =>
-        for {
-          history       <- session.execute(dumboHistory.loadAllQuery)(head.rank)
-          sourceFilesMap = sourceFiles.map(s => (s.rank, s)).toMap
-          _ <- history.filter(_.`type` == "SQL").traverse_ { h =>
-                 sourceFilesMap.get(h.installedRank) match {
-                   case None =>
-                     Sync[F].raiseError[Unit](
-                       new dumbo.exception.DumboValidationException(
-                         s"Detected applied migration not resolved locally ${h.script}"
-                       )
-                     )
-                   case Some(value) if Some(value.checksum) != h.checksum =>
-                     Sync[F].raiseError[Unit](
-                       new dumbo.exception.DumboValidationException(
-                         s"""|Validate failed: Migrations have failed validation
-                             |Migration checksum mismatch for migration version ${h.installedRank}
-                             |  -> Applied to database : ${h.checksum.fold("null")(_.toString)}
-                             |  -> Resolved locally    : ${value.checksum}
-                             |Either revert the changes to the migration ${value.path.fileName} or update the checksum in $historyTable""".stripMargin
-                       )
-                     )
-                   case _ => Applicative[F].unit
-                 }
-               }
-        } yield ()
-      case _ => Applicative[F].unit
-    }
+    if (sourceFiles.nonEmpty) {
+      session
+        .execute(dumboHistory.loadAllQuery)
+        .map(history => validate(history, sourceFiles))
+        .flatMap {
+          case Valid(_) => ().pure[F]
+          case Invalid(e) =>
+            new DumboValidationException(s"Error on validation:\n${e.toList.map(_.getMessage).mkString("\n")}")
+              .raiseError[F, Unit]
+        }
+    } else ().pure[F]
 
   private def migrateToNext(
     session: Session[F],
     fs: FsPlatform[F],
   )(sourceFiles: List[SourceFile]): F[Option[(HistoryEntry, List[SourceFile])]] =
     sourceFiles match {
-      case Nil => Sync[F].pure(None)
+      case Nil => none.pure[F]
       case _ =>
         session.transaction.use { _ =>
           for {
             _               <- session.execute(sql"LOCK #${historyTable}".command)
-            latestInstalled <- session.unique(dumboHistory.findLatestRank).map(_.getOrElse(0))
-            _               <- Console[F].println(s"Current version of database: $latestInstalled")
-            result <- sourceFiles.dropWhile(_.rank <= latestInstalled) match {
+            latestInstalled <- session.unique(dumboHistory.findLatestInstalled).map(_.flatMap(_.sourceFileVersion))
+            _               <- Console[F].println(s"Current version of database: ${latestInstalled.map(_.raw).getOrElse("none")}")
+            result <- sourceFiles.dropWhile(s => latestInstalled.exists(s.version <= _)) match {
                         case head :: tail =>
                           for {
                             _     <- session.execute(sql"SET SEARCH_PATH = #${allSchemas.toList.mkString(",")}".command)
                             entry <- transact(head, fs, session)
                           } yield (entry, tail).some
-                        case _ => Sync[F].pure(None)
+                        case _ => none.pure[F]
                       }
           } yield result
         }
@@ -153,32 +135,22 @@ class Dumbo[F[_]: Sync: Console: Files](
          }
     _ <- schemaRes match {
            case e @ (_ :: _) => session.execute(dumboHistory.insertSchemaEntry)(e.mkString("\"", "\",\"", "\"")).void
-           case _            => Sync[F].unit
+           case _            => ().pure[F]
          }
 
     migrationResult <- FsPlatform.forDir[F](sourceDir).use { fs =>
                          for {
-                           sourceFiles <- Dumbo
-                                            .readSourceFiles[F](sourceDir, fs)
-                                            .compile
-                                            .toList
-                                            .flatMap { sf =>
-                                              val ranks = sf.map(_.rank)
-
-                                              ranks.diff(ranks.distinct) match {
-                                                case Nil => Applicative[F].pure(sf.sortBy(_.rank))
-                                                case diff =>
-                                                  Sync[F].raiseError[List[SourceFile]](
-                                                    new Throwable(
-                                                      s"Found more than one migration with versions ${diff.mkString(", ")}"
-                                                    )
-                                                  )
-                                              }
-                                            }
+                           sourceFiles <- listMigrationFiles(fs).flatMap {
+                                            case Valid(f) => f.pure[F]
+                                            case Invalid(errs) =>
+                                              new DumboValidationException(
+                                                s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
+                                              ).raiseError[F, List[SourceFile]]
+                                          }
                            _ <- Console[F].println(
                                   s"Found ${sourceFiles.size} versioned migration files in ${fs.sourcesUri}"
                                 )
-                           _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else Applicative[F].unit
+                           _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
                            migrationResult <- Stream
                                                 .unfoldEval(sourceFiles)(migrateToNext(session, fs))
                                                 .compile
@@ -199,9 +171,71 @@ class Dumbo[F[_]: Sync: Console: Files](
          }
   } yield migrationResult
 
-  def listMigrationFiles: Stream[F, SourceFile] = Stream.resource(FsPlatform.forDir[F](sourceDir)).flatMap { fs =>
-    Dumbo.readSourceFiles[F](sourceDir, fs)
+  private def validate(
+    history: List[HistoryEntry],
+    sourceFiles: List[SourceFile],
+  ): ValidatedNec[DumboValidationException, Unit] = {
+    val sourceFilesMap = sourceFiles.map(s => (s.versionRaw, s)).toMap
+
+    history
+      .filter(_.`type` == "SQL")
+      .traverse { h =>
+        sourceFilesMap.get(h.version.getOrElse("")) match {
+          case None =>
+            new DumboValidationException(
+              s"Detected applied migration not resolved locally ${h.script}"
+            ).invalidNec[Unit]
+          case Some(value) if Some(value.checksum) != h.checksum =>
+            new DumboValidationException(
+              s"""|Validate failed: Migrations have failed validation
+                  |Migration checksum mismatch for migration version ${h.version}
+                  |-> Applied to database : ${h.checksum.fold("null")(_.toString)}
+                  |-> Resolved locally    : ${value.checksum}
+                  |Either revert the changes to the migration ${value.description.path.fileName} or update the checksum in $historyTable""".stripMargin
+            ).invalidNec[Unit]
+
+          case Some(value) if value.scriptDescription != h.description =>
+            new DumboValidationException(
+              s"""|Migration description mismatch for migration version ${h.version}
+                  |-> Applied to database : ${value.scriptDescription}
+                  |-> Resolved locally    : ${h.description}
+                  |Either revert the changes to the migration, or update the description in $historyTable.""".stripMargin
+            ).invalidNec[Unit]
+
+          case _ => ().validNec[DumboValidationException]
+        }
+      }
+      .void
   }
+
+  def validateWithAppliedMigrations(session: Session[F]): F[ValidatedNec[DumboValidationException, Unit]] =
+    listMigrationFiles.flatMap {
+      case Valid(sourceFiles) =>
+        session.execute(dumboHistory.loadAllQuery).map(history => validate(history, sourceFiles))
+      case Invalid(c) => c.invalid.pure[F]
+    }
+
+  private def listMigrationFiles(fs: FsPlatform[F]) =
+    Dumbo.readSourceFiles[F](sourceDir, fs).compile.toList.map { sf =>
+      val (errs, files) = (sf.collect { case Left(err) => err }, sf.collect { case Right(v) => v })
+      val duplicates    = files.groupBy(_.version).filter(_._2.length > 1).toList
+
+      (duplicates, errs.map(new DumboValidationException(_))) match {
+        case (Nil, Nil)     => files.sorted.validNec[DumboValidationException]
+        case (Nil, x :: xs) => NonEmptyChain(x, xs*).invalid[List[SourceFile]]
+        case (diff, exceptions) =>
+          NonEmptyChain(
+            new DumboValidationException(
+              s"""|Found more than one migration with versions ${diff.map(_._1.toString).mkString(", ")}\n
+                  |Offenders:\n${diff.flatMap(_._2.map(_.path)).mkString("\n")}""".stripMargin
+            ),
+            exceptions*
+          ).invalid[List[SourceFile]]
+      }
+    }
+
+  def listMigrationFiles: F[ValidatedNec[DumboValidationException, List[SourceFile]]] =
+    FsPlatform.forDir[F](sourceDir).use(listMigrationFiles)
 }
 
 object Dumbo {
@@ -223,30 +257,22 @@ object Dumbo {
     validateOnMigrate = validateOnMigrate,
   )
 
-  private[dumbo] def readSourceFiles[F[_]: Sync](dir: Path, fs: FsPlatform[F]): Stream[F, SourceFile] =
+  private[dumbo] def readSourceFiles[F[_]: Sync](dir: Path, fs: FsPlatform[F]): Stream[F, Either[String, SourceFile]] =
     fs.list(dir)
-      .filter(_.extName.endsWith(".sql"))
-      .map { p =>
-        val pattern: Regex = "^V(\\d+)__(.+)\\.sql$".r
-
-        p.fileName.toString match {
-          case pattern(rank, name) => Right((p, rank.toInt, name.replace("_", " ")))
-          case other               => Left(s"Invalid file name $other")
+      .filter(_.extName.endsWith(".sql")) // TODO: include .conf files
+      .evalMap { path =>
+        SourceFileDescription.fromFilePath(path) match {
+          case Right(desc) =>
+            for {
+              checksum     <- checksum[F](path, fs)
+              lastModified <- fs.getLastModifiedTime(path)
+            } yield SourceFile(
+              description = desc,
+              checksum = checksum,
+              lastModified = lastModified,
+            ).asRight[String]
+          case Left(err) => err.asLeft[SourceFile].pure[F]
         }
-      }
-      .evalMap {
-        case Right((path, rank, desc)) =>
-          for {
-            checksum     <- checksum[F](path, fs)
-            lastModified <- fs.getLastModifiedTime(path)
-          } yield SourceFile(
-            rank = rank,
-            description = desc,
-            path = path,
-            checksum = checksum,
-            lastModified = lastModified,
-          )
-        case Left(err) => Sync[F].raiseError[SourceFile](new Throwable(err))
       }
 
   // implementation of checksum from Flyway
