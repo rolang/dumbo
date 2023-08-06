@@ -6,7 +6,7 @@ package dumbo
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
-import scala.util.Try
+import scala.util.{Success, Try}
 
 import cats.data.NonEmptyList
 import fs2.io.file.Path
@@ -21,12 +21,12 @@ final case class SourceFile(
   def scriptDescription: String  = description.description
   def path: Path                 = description.path
 
-  override def hashCode: Int = description.version.hashCode
+  override def hashCode: Int = version.hashCode
 
-  def compare(that: SourceFile): Int = this.version.compare(that.version)
+  def compare(that: SourceFile): Int = version.compare(that.version)
 
   override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
-    case s: SourceFile => this.version.equals(s.version)
+    case s: SourceFile => version.equals(s.version)
     case _             => false
   }
 }
@@ -83,9 +83,13 @@ final case class SourceFileVersion(
     cmpr(this.parts.toList, that.parts.toList)
   }
 
+  // strip trailing 0
+  // 1.0 -> 1
+  // 0.01.0.0 -> 0.1
   override def toString: String =
     parts.reverse.toList.dropWhile(_ <= 0).map(_.toString).reverse.mkString(".")
 
+  // 1.0 should yield same hash code as 1 or 1.0.0 etc.
   override def hashCode: Int = parts.reverse.foldLeft("")(_ + _.toString).toInt
 
   override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
@@ -96,8 +100,8 @@ final case class SourceFileVersion(
 
 object SourceFileVersion {
   def fromString(version: String): Either[String, SourceFileVersion] =
-    Try(version.split('.').map(_.toLong)).toEither match {
-      case Right(Array(x, xs*)) =>
+    Try(version.split('.').map(_.toLong)) match {
+      case Success(Array(x, xs*)) =>
         Right(
           SourceFileVersion(
             raw = version,
