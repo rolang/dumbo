@@ -2,7 +2,7 @@
 // This software is licensed under the MIT License (MIT).
 // For more information see LICENSE or https://opensource.org/licenses/MIT
 
-// NOTE: Copied from skunk 0.0.6 to allow to run multiple-query statements as long as it is not supported: https://github.com/typelevel/skunk/issues/695
+// NOTE: Copied from skunk 0.6.0 to allow to run multiple-query statements as long as it is not supported: https://github.com/typelevel/skunk/issues/695
 // Postgres docs: https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
 package skunk.net.protocol
 

@@ -10,12 +10,14 @@ import scala.concurrent.duration.FiniteDuration
 
 import cats.effect.Resource
 import fs2.Stream
-import fs2.io.file.{Files as Fs2Files, Path}
+import fs2.io.file.{Files as Fs2Files, Flags, Path}
 
 private[dumbo] trait FsPlatform[F[_]] {
   def sourcesUri: java.net.URI
 
   def list(path: Path): fs2.Stream[F, Path]
+
+  def readUtf8(path: Path): fs2.Stream[F, String]
 
   def readUtf8Lines(path: Path): fs2.Stream[F, String]
 
@@ -35,6 +37,9 @@ private[dumbo] object FsPlatform extends FileSystemPlatform {
           Fs2Files[F].list(absolutePath(path))
         override def readUtf8Lines(path: Path): Stream[F, String] =
           Fs2Files[F].readUtf8Lines(absolutePath(path))
+
+        override def readUtf8(path: Path): Stream[F, String] =
+          Fs2Files[F].readAll(absolutePath(path), 64 * 2048, Flags.Read).through(fs2.text.utf8.decode)
 
         override def getLastModifiedTime(path: Path): F[FiniteDuration] =
           Fs2Files[F].getLastModifiedTime(absolutePath(path))
