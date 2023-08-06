@@ -10,7 +10,6 @@ import java.util.zip.CRC32
 import cats.data.Validated.{Invalid, Valid}
 import cats.data.{NonEmptyChain, NonEmptyList, ValidatedNec}
 import cats.effect.Sync
-import cats.effect.kernel.Ref
 import cats.effect.std.Console
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
@@ -43,10 +42,10 @@ class Dumbo[F[_]: Sync: Console: Files](
           s"""Migrating schema "$defaultSchema" to version ${source.versionRaw} - ${source.scriptDescription}"""
         )
 
-      statement <- fs.readUtf8Lines(source.path)
+      statement <- fs.readUtf8(source.path)
                      .compile
                      .toList
-                     .map(_.mkString("\n"))
+                     .map(_.mkString)
 
       (duration, _) <- Sync[F].timed {
                          session
@@ -277,14 +276,13 @@ object Dumbo {
   // https://github.com/flyway/flyway/blob/main/flyway-core/src/main/java/org/flywaydb/core/internal/resolver/ChecksumCalculator.java#L59
   private[dumbo] def checksum[F[_]: Sync](p: Path, fs: FsPlatform[F]): F[Int] =
     for {
-      crc32 <- Ref.of[F, CRC32](new CRC32())
+      crc32 <- (new CRC32()).pure[F]
       _ <- fs.readUtf8Lines(p)
-             .evalMap { line =>
-               crc32.update { c => c.update(line.getBytes(StandardCharsets.UTF_8)); c }
+             .map { line =>
+               crc32.update(line.getBytes(StandardCharsets.UTF_8))
              }
              .compile
              .drain
-      value <- crc32.get.map(_.getValue().toInt)
-    } yield value
+    } yield crc32.getValue().toInt
 
 }
