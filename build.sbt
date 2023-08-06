@@ -2,7 +2,7 @@ lazy val `scala-2.12` = "2.12.18"
 lazy val `scala-2.13` = "2.13.11"
 lazy val `scala-3`    = "3.3.0"
 
-ThisBuild / tlBaseVersion      := "0.1"
+ThisBuild / tlBaseVersion      := "0.0"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-2.13`
 ThisBuild / crossScalaVersions := Seq(`scala-2.12`, `scala-2.13`, `scala-3`)
