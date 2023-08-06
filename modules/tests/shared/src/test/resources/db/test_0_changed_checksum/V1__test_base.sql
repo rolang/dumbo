@@ -1,0 +1,1 @@
+CREATE TABLE test_changed (id INT)

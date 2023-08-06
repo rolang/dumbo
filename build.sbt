@@ -76,7 +76,7 @@ lazy val commonSettings = List(
   },
   Compile / scalacOptions ++= {
     if (scalaVersion.value == `scala-3`)
-      Seq("-source:future")
+      Seq("-source:future", "-language:adhocExtensions")
     else
       Seq("-Xsource:3")
   },

@@ -39,11 +39,11 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _    <- dumboMigrate(schema, Path("db/test_1"))
-      res  <- dumboMigrate(schema, Path("db/test_1_changed_checksum"), validateOnMigrate = true).attempt
+      _    <- dumboMigrate(schema, Path("db/test_0"))
+      res  <- dumboMigrate(schema, Path("db/test_0_changed_checksum"), validateOnMigrate = true).attempt
       _     = assert(res.isLeft)
       _     = assert(res.left.exists(_.getMessage().contains("checksum mismatch")))
-      vRes <- validateWithAppliedMigrations(schema, Path("db/test_1_changed_checksum"))
+      vRes <- validateWithAppliedMigrations(schema, Path("db/test_0_changed_checksum"))
       _ = vRes match {
             case Invalid(errs) => assert(errs.toList.exists(_.getMessage().contains("checksum mismatch")))
             case _             => fail("expected failure")
@@ -55,23 +55,23 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _   <- dumboMigrate(schema, Path("db/test_1"))
-      res <- dumboMigrate(schema, Path("db/test_1_desc_changed"), validateOnMigrate = true).attempt
+      _   <- dumboMigrate(schema, Path("db/test_0"))
+      res <- dumboMigrate(schema, Path("db/test_0_desc_changed"), validateOnMigrate = true).attempt
       _    = assert(res.isLeft)
       _ = assert(res.left.exists { err =>
             val message = err.getMessage()
             message.contains("description mismatch") &&
               message.contains("test changed") &&
-              message.contains("test b")
+              message.contains("test base")
           })
-      vRes <- validateWithAppliedMigrations(schema, Path("db/test_1_desc_changed"))
+      vRes <- validateWithAppliedMigrations(schema, Path("db/test_0_desc_changed"))
       _ = vRes match {
             case Invalid(errs) =>
               assert(errs.exists { err =>
                 val message = err.getMessage()
                 message.contains("description mismatch") &&
                   message.contains("test changed") &&
-                  message.contains("test b")
+                  message.contains("test base")
               })
             case _ => fail("expected failure")
           }
@@ -82,12 +82,12 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _    <- dumboMigrate(schema, Path("db/test_1"))
-      res  <- dumboMigrate(schema, Path("db/test_1_missing_file"), validateOnMigrate = true).attempt
+      _    <- dumboMigrate(schema, Path("db/test_0"))
+      res  <- dumboMigrate(schema, Path("db/test_0_missing_file"), validateOnMigrate = true).attempt
       _     = assert(res.isLeft)
       _     = assert(res.left.exists(_.isInstanceOf[dumbo.exception.DumboValidationException]))
       _     = assert(res.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
-      vRes <- validateWithAppliedMigrations(schema, Path("db/test_1_missing_file"))
+      vRes <- validateWithAppliedMigrations(schema, Path("db/test_0_missing_file"))
       _ = vRes match {
             case Invalid(errs) =>
               assert(errs.toList.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
@@ -100,10 +100,11 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _    <- dumboMigrate(schema, Path("db/test_1"))
-      resA <- dumboMigrate(schema, Path("db/test_1_missing_file"), validateOnMigrate = false).attempt
-      resB <- dumboMigrate(schema, Path("db/test_1_changed_checksum"), validateOnMigrate = false).attempt
-      _     = assert(resA.isRight && resB.isRight)
+      _    <- dumboMigrate(schema, Path("db/test_0"))
+      resA <- dumboMigrate(schema, Path("db/test_0_missing_file"), validateOnMigrate = false).attempt
+      resB <- dumboMigrate(schema, Path("db/test_0_changed_checksum"), validateOnMigrate = false).attempt
+      resC <- dumboMigrate(schema, Path("db/test_0_desc_changed"), validateOnMigrate = false).attempt
+      _     = assert(resA.isRight && resB.isRight && resC.isRight)
     } yield ()
   }
 
