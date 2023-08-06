@@ -1,6 +1,5 @@
 # Dumbo
 
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/rolang/dumbo/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/rolang/dumbo/tree/main)
 [![Sonatype Releases](https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.rolang/dumbo_2.13.svg?label=Sonatype%20Release)](https://oss.sonatype.org/content/repositories/releases/dev/rolang/dumbo_2.13/)
 [![Sonatype Snapshots](https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.rolang/dumbo_2.13.svg?label=Sonatype%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/dev/rolang/dumbo_2.13/)
 
