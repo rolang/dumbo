@@ -10,3 +10,5 @@ CREATE TABLE test (
   number int,
   template test_enum_type
 );
+
+--SELECT 1

@@ -39,11 +39,11 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      res       <- flywayMigrate(schema, Path("db/test_1"))
-      _          = assert(res.migrationsExecuted == 3)
-      flywayRes <- flywayMigrate(schema, Path("db/test_1_changed_checksum")).attempt
+      res       <- flywayMigrate(schema, Path("db/test_0"))
+      _          = assert(res.migrationsExecuted == 2)
+      flywayRes <- flywayMigrate(schema, Path("db/test_0_changed_checksum")).attempt
       _          = assert(flywayRes.left.exists(_.getMessage().contains("checksum mismatch")))
-      dumboRes  <- dumboMigrate(schema, Path("db/test_1_changed_checksum")).attempt
+      dumboRes  <- dumboMigrate(schema, Path("db/test_0_changed_checksum")).attempt
       _          = assert(dumboRes.left.exists(_.getMessage().contains("checksum mismatch")))
     } yield ()
   }
@@ -52,11 +52,11 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      res       <- flywayMigrate(schema, Path("db/test_1"))
-      _          = assert(res.migrationsExecuted == 3)
-      flywayRes <- flywayMigrate(schema, Path("db/test_1_missing_file")).attempt
+      res       <- flywayMigrate(schema, Path("db/test_0"))
+      _          = assert(res.migrationsExecuted == 2)
+      flywayRes <- flywayMigrate(schema, Path("db/test_0_missing_file")).attempt
       _          = assert(flywayRes.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
-      dumboRes  <- dumboMigrate(schema, Path("db/test_1_missing_file")).attempt
+      dumboRes  <- dumboMigrate(schema, Path("db/test_0_missing_file")).attempt
       _          = assert(dumboRes.left.exists(_.isInstanceOf[dumbo.exception.DumboValidationException]))
       _          = assert(dumboRes.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
     } yield ()

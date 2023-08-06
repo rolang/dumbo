@@ -43,21 +43,20 @@ class Dumbo[F[_]: Sync: Console: Files](
           s"""Migrating schema "$defaultSchema" to version ${source.versionRaw} - ${source.scriptDescription}"""
         )
 
-      statements <- fs.readUtf8Lines(source.path)
-                      .compile
-                      .toList
-                      .map(_.mkString("\n").split(";").toList.filter(_.trim.nonEmpty))
+      statement <- fs.readUtf8Lines(source.path)
+                     .compile
+                     .toList
+                     .map(_.mkString("\n"))
 
       (duration, _) <- Sync[F].timed {
-                         statements.traverse(statement =>
-                           session.execute(
+                         session
+                           .execute(
                              SqlCommand(
                                sql = statement,
                                origin = Origin(source.path.toString, line = 0),
                                Void.codec,
                              )
                            )
-                         )
                        }
       entry <- session
                  .unique(dumboHistory.insertSQLEntry)(
@@ -98,7 +97,6 @@ class Dumbo[F[_]: Sync: Console: Files](
           for {
             _               <- session.execute(sql"LOCK #${historyTable}".command)
             latestInstalled <- session.unique(dumboHistory.findLatestInstalled).map(_.flatMap(_.sourceFileVersion))
-            _               <- Console[F].println(s"Current version of database: ${latestInstalled.map(_.raw).getOrElse("none")}")
             result <- sourceFiles.dropWhile(s => latestInstalled.exists(s.version <= _)) match {
                         case head :: tail =>
                           for {
