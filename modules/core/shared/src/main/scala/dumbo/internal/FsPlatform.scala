@@ -5,10 +5,12 @@
 package dumbo.internal
 
 import java.net.URI
+import java.util.zip.ZipFile
 
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{FiniteDuration, *}
+import scala.jdk.CollectionConverters.*
 
-import cats.effect.Resource
+import cats.effect.{Resource, Sync}
 import fs2.Stream
 import fs2.io.file.{Files as Fs2Files, Flags, Path}
 
@@ -45,4 +47,42 @@ private[dumbo] object FsPlatform extends FileSystemPlatform {
           Fs2Files[F].getLastModifiedTime(absolutePath(path))
       }
     }
+
+  def jarFs[F[_]: Sync](jarUri: URI, sourceDir: Path): Resource[F, FsPlatform[F]] = Resource.fromAutoCloseable {
+    Sync[F].delay {
+      val srcUriStr   = jarUri.toString()
+      val jarFilePath = srcUriStr.slice(srcUriStr.lastIndexOf(":") + 1, srcUriStr.lastIndexOf("!"))
+      new ZipFile(jarFilePath)
+    }
+  }.map { fs =>
+    new FsPlatform[F] {
+      override val sourcesUri: URI = jarUri
+      override def list(path: Path): Stream[F, Path] =
+        Stream
+          .fromIterator(
+            fs.entries()
+              .asScala
+              .filter(_.getName().startsWith(sourceDir.toString))
+              .map(entry => Path(entry.getName())),
+            64,
+          )
+
+      override def readUtf8Lines(path: Path): Stream[F, String] =
+        readUtf8(path).through(fs2.text.lines)
+
+      override def readUtf8(path: Path): Stream[F, String] =
+        fs2.io
+          .readInputStream(
+            Sync[F].delay(fs.getInputStream(fs.getEntry(path.toString))),
+            64 * 2048,
+            closeAfterUse = true,
+          )
+          .through(fs2.text.utf8.decode)
+
+      override def getLastModifiedTime(path: Path): F[FiniteDuration] =
+        Sync[F].delay {
+          fs.getEntry(path.toString).getLastModifiedTime.toMillis().millis
+        }
+    }
+  }
 }
