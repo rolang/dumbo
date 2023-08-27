@@ -63,7 +63,7 @@ private[dumbo] object FsPlatform extends FileSystemPlatform {
             fs.entries()
               .asScala
               .filter(_.getName().startsWith(sourceDir.toString))
-              .map(f => Path(f.getName())),
+              .map(entry => Path(entry.getName())),
             64,
           )
 
@@ -72,7 +72,11 @@ private[dumbo] object FsPlatform extends FileSystemPlatform {
 
       override def readUtf8(path: Path): Stream[F, String] =
         fs2.io
-          .readInputStream(Sync[F].delay(fs.getInputStream(fs.getEntry(path.toString))), 64 * 2048, false)
+          .readInputStream(
+            Sync[F].delay(fs.getInputStream(fs.getEntry(path.toString))),
+            64 * 2048,
+            closeAfterUse = true,
+          )
           .through(fs2.text.utf8.decode)
 
       override def getLastModifiedTime(path: Path): F[FiniteDuration] =
