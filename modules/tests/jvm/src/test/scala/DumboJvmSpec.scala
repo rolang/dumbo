@@ -13,7 +13,7 @@ class DumboJvmSpec extends ffstest.FTest {
 
   test("find resource in main") {
     for {
-      result <- Dumbo[IO](Path("main")).listMigrationFiles
+      result <- Dumbo.listMigrationFiles[IO](Path("main"))
       _ = result match {
             case Valid(f)      => assert(f.exists(_.path.fileName.toString == "V1__dummy.sql"))
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
@@ -23,7 +23,7 @@ class DumboJvmSpec extends ffstest.FTest {
 
   test("fail on multiple resources") {
     for {
-      result <- Dumbo[IO](Path("duplicated")).listMigrationFiles.attempt
+      result <- Dumbo.listMigrationFiles[IO](Path("duplicated")).attempt
       _ = result match {
             case Right(_)  => fail("Expecting a failure")
             case Left(err) => assert(err.isInstanceOf[MultipleResoucesException])

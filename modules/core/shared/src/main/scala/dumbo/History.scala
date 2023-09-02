@@ -52,23 +52,23 @@ object HistoryEntry {
 }
 
 class History(tableName: String) {
-  val createTableCommand: Command[Void] = sql"""
-    CREATE TABLE IF NOT EXISTS #${tableName} (
-      installed_rank  INT NOT NULL PRIMARY KEY,
-      version         VARCHAR(50) NULL,
-      description     VARCHAR(200) NOT NULL,
-      type            VARCHAR(20) NOT NULL,
-      script          VARCHAR(1000) NOT NULL,
-      checksum        INT NULL,
-      installed_by    VARCHAR(100) NOT NULL,
-      installed_on    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      execution_time  INT NOT NULL,
-      success         BOOL NOT NULL
-    )""".command
+  val createTableCommand: Command[Void] =
+    sql"""CREATE TABLE IF NOT EXISTS #${tableName} (
+          installed_rank  INT NOT NULL PRIMARY KEY,
+          version         VARCHAR(50) NULL,
+          description     VARCHAR(200) NOT NULL,
+          type            VARCHAR(20) NOT NULL,
+          script          VARCHAR(1000) NOT NULL,
+          checksum        INT NULL,
+          installed_by    VARCHAR(100) NOT NULL,
+          installed_on    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          execution_time  INT NOT NULL,
+          success         BOOL NOT NULL
+        )""".command
 
-  val loadAllQuery: Query[Void, HistoryEntry] = sql"""
-    SELECT #${HistoryEntry.fieldNames}
-    FROM #${tableName} ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
+  val loadAllQuery: Query[Void, HistoryEntry] =
+    sql"""SELECT #${HistoryEntry.fieldNames}
+          FROM #${tableName} ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
 
   val findLatestInstalled: Query[Void, Option[HistoryEntry]] =
     sql"""SELECT #${HistoryEntry.fieldNames}
@@ -77,20 +77,18 @@ class History(tableName: String) {
   val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = {
     val nextRank = sql"(SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM #${tableName})"
 
-    sql"""
-    INSERT INTO #${tableName}
-    (installed_rank, version, description, type, script, checksum, execution_time, success, installed_on, installed_by)
-    VALUES ($nextRank, ${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER)
-    RETURNING #${HistoryEntry.fieldNames}"""
-      .query(HistoryEntry.codec)
+    sql"""INSERT INTO #${tableName}
+          (installed_rank, version, description, type, script, checksum, execution_time, success, installed_on, installed_by)
+          VALUES ($nextRank, ${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER)
+          RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
   }
 
-  val insertSchemaEntry: Command[String] = sql"""
-    INSERT INTO #${tableName}
-    (installed_rank, description, type, script, execution_time, success, installed_on, installed_by)
-    VALUES 
-    (0, '<< Flyway Schema Creation >>', 'SCHEMA', ${varchar(1000)}, 0, true, CURRENT_TIMESTAMP, CURRENT_USER)
-    ON CONFLICT DO NOTHING""".command
+  val insertSchemaEntry: Command[String] =
+    sql"""INSERT INTO #${tableName}
+          (installed_rank, description, type, script, execution_time, success, installed_on, installed_by)
+          VALUES 
+          (0, '<< Flyway Schema Creation >>', 'SCHEMA', ${varchar(1000)}, 0, true, CURRENT_TIMESTAMP, CURRENT_USER)
+          ON CONFLICT DO NOTHING""".command
 }
 
 object History {

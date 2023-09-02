@@ -37,31 +37,27 @@ example
             V3__test_c.sql
             V2__test_b.sql
 ```
-The migration can be exectured in the process:
+The migration can be executed in the process:
 ```scala
 import cats.effect.{IO, IOApp}
 import dumbo.Dumbo
 import natchez.Trace.Implicits.noop
-import skunk.Session
 
 object ExampleApp extends IOApp.Simple {
-  override def run: IO[Unit] = for {
-    result <- Session
-                .single[IO](
-                  host = "localhost",
-                  port = 5432,
-                  user = "postgres",
-                  database = "postgres",
-                  password = Some("postgres"),
-                )
-                .use(
-                  Dumbo[IO](
-                    sourceDir = fs2.io.file.Path("db") / "migration",
-                    defaultSchema = "public",
-                  ).migrate
-                )
-    _ <- IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
-  } yield ()
+  override def run: IO[Unit] = Dumbo[IO](
+    sourceDir = fs2.io.file.Path("db") / "migration",
+    sessionResource = skunk.Session
+      .single[IO](
+        host = "localhost",
+        port = 5432,
+        user = "postgres",
+        database = "postgres",
+        password = Some("postgres"),
+      ),
+    defaultSchema = "public",
+  ).runMigration.flatMap { result =>
+    IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
+  }
 }
 ```
 
