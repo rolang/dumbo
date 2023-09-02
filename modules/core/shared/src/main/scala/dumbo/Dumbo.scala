@@ -98,40 +98,38 @@ class Dumbo[F[_]: Async: Console: Files](
       val interval = FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS)
 
       Async[F].background {
-        (for {
-          _ <- Stream.sleep[F](FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))
-          _ <-
-            Stream
-              .evalSeq(
-                sessionResource
-                  .use(
-                    _.execute(
-                      sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
+        Stream
+          .evalSeq(
+            sessionResource
+              .use(
+                _.execute(
+                  sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
                                      FROM pg_locks l
                                      JOIN pg_stat_all_tables t ON t.relid = l.relation
                                      JOIN pg_stat_activity ps ON ps.pid = l.pid
                                      WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
-                        .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
-                    ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
-                  )
+                    .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
+                ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
               )
-              .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
-                for {
-                  now         <- Clock[F].realTimeInstant
-                  startedAgo   = now.getEpochSecond() - start.toEpochSecond()
-                  changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
-                  queryLogSize = 150
-                  queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
-                  _ <-
-                    Console[F].println(
-                      s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
-                        s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
-                    )
-                } yield ()
-              }
-              .repeat
-              .metered(interval)
-        } yield ()).compile.drain
+          )
+          .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
+            for {
+              now         <- Clock[F].realTimeInstant
+              startedAgo   = now.getEpochSecond() - start.toEpochSecond()
+              changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
+              queryLogSize = 150
+              queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
+              _ <-
+                Console[F].println(
+                  s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
+                    s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
+                )
+            } yield ()
+          }
+          .repeat
+          .metered(interval)
+          .compile
+          .drain
       }
     } else {
       Resource.unit[F]

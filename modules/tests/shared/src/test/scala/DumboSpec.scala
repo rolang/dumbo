@@ -221,7 +221,7 @@ class DumboSpec extends ffstest.FTest {
       val testConsole = new TestConsole()
 
       for {
-        _ <- dumboMigrate("public", resourcesDir, logMigrationStateAfter = 500.millis)(testConsole)
+        _ <- dumboMigrate("public", resourcesDir, logMigrationStateAfter = 800.millis)(testConsole)
         _  = assert(testConsole.logs.get().count(logMatch) >= 2)
       } yield ()
     }
