@@ -115,22 +115,19 @@ class Dumbo[F[_]: Async: Console: Files](
                     ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
                   )
               )
-              .evalMap {
-                case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
-                  for {
-                    now         <- Clock[F].realTimeInstant
-                    startedAgo   = now.getEpochSecond() - start.toEpochSecond()
-                    changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
-                    queryLogSize = 150
-                    queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
-                    _ <-
-                      Console[F].println(
-                        s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
-                          s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
-                      )
-                  } yield ()
-
-                case _ => Sync[F].unit
+              .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
+                for {
+                  now         <- Clock[F].realTimeInstant
+                  startedAgo   = now.getEpochSecond() - start.toEpochSecond()
+                  changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
+                  queryLogSize = 150
+                  queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
+                  _ <-
+                    Console[F].println(
+                      s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
+                        s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
+                    )
+                } yield ()
               }
               .repeat
               .metered(interval)
