@@ -4,9 +4,16 @@
 
 package dumbo
 
+import java.nio.charset.Charset
+import java.util.concurrent.atomic.AtomicReference
+
+import scala.concurrent.duration.*
+
+import cats.Show
 import cats.data.NonEmptyList
 import cats.data.Validated.{Invalid, Valid}
 import cats.effect.IO
+import cats.effect.std.Console
 import cats.implicits.*
 import fs2.io.file.Path
 
@@ -110,7 +117,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("list migration files from resources") {
     for {
-      files <- Dumbo[IO](resourcesPath(Path("db/test_1"))).listMigrationFiles
+      files <- Dumbo.listMigrationFiles[IO](resourcesPath(Path("db/test_1")))
       _ = files match {
             case Valid(files) =>
               assert(
@@ -127,7 +134,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("list migration files from relative path") {
     for {
-      files <- Dumbo[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1")).listMigrationFiles
+      files <- Dumbo.listMigrationFiles[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1"))
       _ = files match {
             case Valid(files) =>
               assert(
@@ -142,9 +149,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("list migration files from absolute path") {
     for {
-      files <- Dumbo[IO](
-                 Path("modules/tests/shared/src/test/non_resource/db/test_1").absolute
-               ).listMigrationFiles
+      files <- Dumbo.listMigrationFiles[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1").absolute)
       _ = files match {
             case Valid(files) =>
               assert(
@@ -159,7 +164,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("fail with NoSuchFileException") {
     for {
-      result <- Dumbo[IO](resourcesPath(Path("db/non_existing/path"))).listMigrationFiles.attempt
+      result <- Dumbo.listMigrationFiles[IO](resourcesPath(Path("db/non_existing/path"))).attempt
       _       = assert(result.isLeft)
       _ = assert(
             result.left.exists(e =>
@@ -171,7 +176,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("fail on files with same versions") {
     for {
-      result <- Dumbo[IO](resourcesPath(Path("db/test_duplicate_versions"))).listMigrationFiles
+      result <- Dumbo.listMigrationFiles[IO](resourcesPath(Path("db/test_duplicate_versions")))
       _ = result match {
             case Invalid(errs) =>
               assert(errs.toList.exists { err =>
@@ -188,5 +193,37 @@ class DumboSpec extends ffstest.FTest {
             case _ => fail("expected failure")
           }
     } yield ()
+  }
+
+  {
+    class TestConsole extends Console[IO] {
+      val logs: AtomicReference[Vector[String]] = new AtomicReference(Vector.empty[String])
+
+      override def readLineWithCharset(charset: Charset): IO[String] = ???
+      override def print[A](a: A)(implicit S: Show[A]): IO[Unit]     = ???
+      override def println[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO(logs.getAndUpdate(_ :+ S.show(a))).void
+      override def error[A](a: A)(implicit S: Show[A]): IO[Unit]     = IO.println(S.show(a))
+      override def errorln[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))
+    }
+
+    val resourcesDir                 = Path("db/test_long_running")
+    def logMatch(s: String): Boolean = s.startsWith("Awaiting query with pid")
+
+    dbTest("don't log on waiting for lock release if under provided duration") {
+      val testConsole = new TestConsole()
+      for {
+        _ <- dumboMigrate("public", resourcesDir, logMigrationStateAfter = 5.second)(testConsole)
+        _  = assert(testConsole.logs.get().count(logMatch) == 0)
+      } yield ()
+    }
+
+    dbTest("log on waiting for lock release longer than provided duration") {
+      val testConsole = new TestConsole()
+
+      for {
+        _ <- dumboMigrate("public", resourcesDir, logMigrationStateAfter = 800.millis)(testConsole)
+        _  = assert(testConsole.logs.get().count(logMatch) >= 2)
+      } yield ()
+    }
   }
 }

@@ -4,8 +4,10 @@
 
 package ffstest
 
+import scala.concurrent.duration.*
+
 import cats.data.ValidatedNec
-import cats.effect.{IO, Resource}
+import cats.effect.{IO, Resource, std}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
 import dumbo.{Dumbo, History, HistoryEntry}
@@ -36,29 +38,42 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     defaultSchema: String,
     sourcesPath: Path,
     schemas: List[String] = Nil,
+    schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
-  ): IO[Dumbo.MigrationResult] =
-    session.use(
-      Dumbo[IO](
-        sourceDir = resourcesPath(sourcesPath),
-        defaultSchema = defaultSchema,
-        schemas = schemas.toSet,
-        validateOnMigrate = validateOnMigrate,
-      ).migrate
-    )
+    logMigrationStateAfter: Duration = Duration.Inf,
+  )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
+    (if (logMigrationStateAfter.isFinite) {
+       Dumbo
+         .withMigrationStateLogAfter[IO](FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
+           sourceDir = resourcesPath(sourcesPath),
+           sessionResource = session,
+           defaultSchema = defaultSchema,
+           schemas = schemas.toSet,
+           schemaHistoryTable = schemaHistoryTable,
+           validateOnMigrate = validateOnMigrate,
+         )
+     } else {
+       Dumbo[IO](
+         sourceDir = resourcesPath(sourcesPath),
+         sessionResource = session,
+         defaultSchema = defaultSchema,
+         schemas = schemas.toSet,
+         schemaHistoryTable = schemaHistoryTable,
+         validateOnMigrate = validateOnMigrate,
+       )
+     }).runMigration
 
   def validateWithAppliedMigrations(
     defaultSchema: String,
     sourcesPath: Path,
     schemas: List[String] = Nil,
   ): IO[ValidatedNec[DumboValidationException, Unit]] =
-    session.use(
-      Dumbo[IO](
-        sourceDir = resourcesPath(sourcesPath),
-        defaultSchema = defaultSchema,
-        schemas = schemas.toSet,
-      ).validateWithAppliedMigrations
-    )
+    Dumbo[IO](
+      sourceDir = resourcesPath(sourcesPath),
+      sessionResource = session,
+      defaultSchema = defaultSchema,
+      schemas = schemas.toSet,
+    ).runValidationWithHistory
 
   def dropSchemas: IO[Unit] = session.use { s =>
     for {
