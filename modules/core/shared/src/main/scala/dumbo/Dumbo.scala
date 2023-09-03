@@ -26,14 +26,14 @@ import skunk.implicits.*
 import skunk.util.Origin
 import skunk.Command as SqlCommand
 
-class Dumbo[F[_]: Async: Console: Files](
+class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
   sourceDir: Path,
   sessionResource: Resource[F, Session[F]],
   defaultSchema: String = "public",
   schemas: Set[String] = Set.empty,
   schemaHistoryTable: String = "flyway_schema_history",
   validateOnMigrate: Boolean = true, // validate applied migrations against the available ones
-  logMigrationStateAfter: Duration = Duration.Inf,
+  progressMonitor: Resource[F, Unit] = Resource.unit[F],
 ) {
   import Dumbo.*
 
@@ -93,48 +93,6 @@ class Dumbo[F[_]: Async: Console: Files](
         }
     } else ().pure[F]
 
-  private def awaitLockMonitoring =
-    if (logMigrationStateAfter.isFinite) {
-      val interval = FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS)
-
-      Async[F].background {
-        Stream
-          .evalSeq(
-            sessionResource
-              .use(
-                _.execute(
-                  sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
-                                     FROM pg_locks l
-                                     JOIN pg_stat_all_tables t ON t.relid = l.relation
-                                     JOIN pg_stat_activity ps ON ps.pid = l.pid
-                                     WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
-                    .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
-                ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
-              )
-          )
-          .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
-            for {
-              now         <- Clock[F].realTimeInstant
-              startedAgo   = now.getEpochSecond() - start.toEpochSecond()
-              changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
-              queryLogSize = 150
-              queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
-              _ <-
-                Console[F].println(
-                  s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
-                    s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
-                )
-            } yield ()
-          }
-          .repeat
-          .metered(interval)
-          .compile
-          .drain
-      }
-    } else {
-      Resource.unit[F]
-    }
-
   private def migrateToNext(
     session: Session[F],
     fs: FsPlatform[F],
@@ -144,7 +102,7 @@ class Dumbo[F[_]: Async: Console: Files](
       case _ =>
         (for {
           txn <- session.transaction
-          _   <- awaitLockMonitoring
+          _   <- progressMonitor
         } yield txn).use { _ =>
           for {
             _               <- session.execute(sql"LOCK TABLE #${historyTable} IN ACCESS EXCLUSIVE MODE".command)
@@ -171,9 +129,6 @@ class Dumbo[F[_]: Async: Console: Files](
   )
 
   def runMigration: F[MigrationResult] = sessionResource.use(migrateBySession)
-
-  @deprecated("Use runMigration by passing sessionResource: Resource[F, Session[F]] to the Dumbo constructor", "0.0.3")
-  def migrate(session: Session[F]): F[Dumbo.MigrationResult] = migrateBySession(session)
 
   private def migrateBySession(session: Session[F]): F[Dumbo.MigrationResult] = for {
     schemaRes <-
@@ -263,17 +218,6 @@ class Dumbo[F[_]: Async: Console: Files](
       .void
   }
 
-  @deprecated(
-    "Use runValidationWithHistory by passing sessionResource: Resource[F, Session[F]] to the Dumbo constructor",
-    "0.0.3",
-  )
-  def validateWithAppliedMigrations(session: Session[F]): F[ValidatedNec[DumboValidationException, Unit]] =
-    listMigrationFiles(sourceDir).flatMap {
-      case Valid(sourceFiles) =>
-        session.execute(dumboHistory.loadAllQuery).map(history => validate(history, sourceFiles))
-      case Invalid(c) => c.invalid.pure[F]
-    }
-
   def runValidationWithHistory: F[ValidatedNec[DumboValidationException, Unit]] =
     listMigrationFiles(sourceDir).flatMap {
       case Valid(sourceFiles) =>
@@ -287,14 +231,13 @@ object Dumbo {
     val migrationsExecuted: Int = migrations.length
   }
 
-  def apply[F[_]: Async: Console: Files](
+  def apply[F[_]: Sync: Console: Files](
     sourceDir: Path,
     sessionResource: Resource[F, Session[F]],
     defaultSchema: String = "public",
     schemas: Set[String] = Set.empty[String],
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
-    logMigrationStateAfter: Duration = Duration.Inf,
   ) = new Dumbo[F](
     sourceDir = sourceDir,
     sessionResource = sessionResource,
@@ -302,8 +245,58 @@ object Dumbo {
     schemas = schemas,
     schemaHistoryTable = schemaHistoryTable,
     validateOnMigrate = validateOnMigrate,
-    logMigrationStateAfter = logMigrationStateAfter,
   )
+
+  def withMigrationStateLogAfter[F[_]: Async: Console: Files](logMigrationStateAfter: FiniteDuration)(
+    sourceDir: Path,
+    sessionResource: Resource[F, Session[F]],
+    defaultSchema: String = "public",
+    schemas: Set[String] = Set.empty[String],
+    schemaHistoryTable: String = "flyway_schema_history",
+    validateOnMigrate: Boolean = true,
+  ): Dumbo[F] =
+    new Dumbo[F](
+      sourceDir = sourceDir,
+      sessionResource = sessionResource,
+      defaultSchema = defaultSchema,
+      schemas = schemas,
+      schemaHistoryTable = schemaHistoryTable,
+      validateOnMigrate = validateOnMigrate,
+      progressMonitor = Async[F].background {
+        Stream
+          .evalSeq(
+            sessionResource
+              .use(
+                _.execute(
+                  sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
+                        FROM pg_locks l
+                        JOIN pg_stat_all_tables t ON t.relid = l.relation
+                        JOIN pg_stat_activity ps ON ps.pid = l.pid
+                        WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
+                    .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
+                ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
+              )
+          )
+          .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
+            for {
+              now         <- Clock[F].realTimeInstant
+              startedAgo   = now.getEpochSecond() - start.toEpochSecond()
+              changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
+              queryLogSize = 150
+              queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
+              _ <-
+                Console[F].println(
+                  s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
+                    s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
+                )
+            } yield ()
+          }
+          .repeat
+          .metered(logMigrationStateAfter)
+          .compile
+          .drain
+      }.void,
+    )
 
   def listMigrationFiles[F[_]: Sync: Files](
     sourceDir: Path

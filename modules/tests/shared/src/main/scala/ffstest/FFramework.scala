@@ -42,15 +42,26 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     validateOnMigrate: Boolean = true,
     logMigrationStateAfter: Duration = Duration.Inf,
   )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
-    Dumbo[IO](
-      sourceDir = resourcesPath(sourcesPath),
-      sessionResource = session,
-      defaultSchema = defaultSchema,
-      schemas = schemas.toSet,
-      schemaHistoryTable = schemaHistoryTable,
-      validateOnMigrate = validateOnMigrate,
-      logMigrationStateAfter = logMigrationStateAfter,
-    ).runMigration
+    (if (logMigrationStateAfter.isFinite) {
+       Dumbo
+         .withMigrationStateLogAfter[IO](FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
+           sourceDir = resourcesPath(sourcesPath),
+           sessionResource = session,
+           defaultSchema = defaultSchema,
+           schemas = schemas.toSet,
+           schemaHistoryTable = schemaHistoryTable,
+           validateOnMigrate = validateOnMigrate,
+         )
+     } else {
+       Dumbo[IO](
+         sourceDir = resourcesPath(sourcesPath),
+         sessionResource = session,
+         defaultSchema = defaultSchema,
+         schemas = schemas.toSet,
+         schemaHistoryTable = schemaHistoryTable,
+         validateOnMigrate = validateOnMigrate,
+       )
+     }).runMigration
 
   def validateWithAppliedMigrations(
     defaultSchema: String,
