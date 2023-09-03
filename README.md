@@ -70,3 +70,39 @@ Run example with sbt:
 ```shell
 sbt 'example/run'
 ```
+
+## Configurations
+```scala
+Dumbo[IO](
+  // relative or absolute path to directory with migration files
+  //
+  // on JVM a relative path will be looked up in the resources first (can be embedded into a jar or not)
+  // if the path is absolute or not found under resources then it will be looked up in the file system from working directory 
+  //
+  // on Native the path currently needs to be either absolute or relative to the working directory
+  // the directory with migration files needs to be added to the build, embedded resources support may be added soon...
+  sourceDir: Path,
+  
+  // skunk session resource
+  sessionResource: Resource[F, Session[F]],
+  
+  // default schema (the history state is going to be stored under that schema)
+  defaultSchema: String = "public",
+  
+  // schemas to include in the search
+  schemas: Set[String] = Set.empty[String],
+  
+  // migration history table name
+  schemaHistoryTable: String = "flyway_schema_history",
+  
+  // compare migration files with applied migrations
+  // check e.g. for changed file content/description or missing files before migration
+  validateOnMigrate: Boolean = true
+)
+
+// migration progress logs can be added optionally in case you'd like dumbo to provide some feedback on longer running queries
+// it will perform requests to Postgres in given interval to check for queries that are causing the lock on migration history table
+Dumbo.withMigrationStateLogAfter[IO](5.seconds)(
+  /* use config as above */
+)
+```
