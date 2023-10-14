@@ -1,6 +1,6 @@
 lazy val `scala-2.12` = "2.12.18"
-lazy val `scala-2.13` = "2.13.11"
-lazy val `scala-3`    = "3.3.0"
+lazy val `scala-2.13` = "2.13.12"
+lazy val `scala-3`    = "3.3.1"
 
 ThisBuild / tlBaseVersion      := "0.0"
 ThisBuild / startYear          := Some(2023)
@@ -26,7 +26,7 @@ ThisBuild / scalafixDependencies ++= List(
 )
 
 // githubWorkflow
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
@@ -49,6 +49,10 @@ ThisBuild / githubWorkflowBuild := {
     cond = Some("(matrix.project == 'rootJVM') && (matrix.scala == '2.13')"),
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
+ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
+  MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.12")),
+  MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.13")),
+)
 
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("fix", "; all scalafixAll; all scalafmtSbt scalafmtAll")
@@ -87,7 +91,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
-lazy val skunkVersion = "0.6.0"
+lazy val skunkVersion = "0.6.1"
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .enablePlugins(AutomateHeaderPlugin)
@@ -110,7 +114,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     publish / skip := true,
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit"             % "1.0.0-M7",
+      "org.scalameta" %%% "munit"             % "1.0.0-M10",
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3",
     ),
     testFrameworks += new TestFramework("munit.Framework"),
@@ -121,11 +125,11 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.5",
+    libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.6",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
   )
 
-lazy val flywayVersion     = "9.21.1"
+lazy val flywayVersion     = "9.22.3"
 lazy val postgresqlVersion = "42.6.0"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
