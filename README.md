@@ -9,8 +9,8 @@ Simple database migration tool for Scala + Postgres with [skunk](https://typelev
 Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway compatible history state to allow you to switch to Flyway if necessary.
 
 Currently supports:
- - Versioned Migrations in the filesystem as specified by Flyway:  
-  ![Versioned Migrayions](./docs/assets/versioned_migrations.png)  
+ - Versioned Migrations as specified by Flyway:  
+  ![Versioned Migrations](./docs/assets/versioned_migrations.png)  
 
   Each versioned migration must be assigned a unique version.  
   A simple increasing integer or any version is valid as long as it conforms to the usual dotted notation:
@@ -25,7 +25,7 @@ Currently supports:
 
 ## Usage example
 Examples can be viewed in [modules/example](./modules/example/).  
-Similar to usage of the Flyway Java library, given versioned migrations in the filesystem in the resource folder: 
+Similar to usage of the Flyway Java library, given versioned migrations in the resources folder: 
 ```
 example
   src
@@ -37,7 +37,7 @@ example
             V3__test_c.sql
             V2__test_b.sql
 ```
-The migration can be executed in the process:
+The migration can be executed like:
 ```scala
 import cats.effect.{IO, IOApp}
 import dumbo.Dumbo
