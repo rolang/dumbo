@@ -4,8 +4,8 @@ lazy val `scala-3`    = "3.3.1"
 
 ThisBuild / tlBaseVersion      := "0.0"
 ThisBuild / startYear          := Some(2023)
-ThisBuild / scalaVersion       := `scala-2.13`
-ThisBuild / crossScalaVersions := Seq(`scala-2.12`, `scala-2.13`, `scala-3`)
+ThisBuild / scalaVersion       := `scala-3`
+ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`, `scala-2.12`)
 
 ThisBuild / organization := "dev.rolang"
 ThisBuild / licenses     := Seq(License.MIT)
@@ -20,10 +20,7 @@ ThisBuild / scalafmt                   := true
 ThisBuild / scalafmtSbtCheck           := true
 ThisBuild / semanticdbEnabled          := true
 ThisBuild / semanticdbVersion          := scalafixSemanticdb.revision // use Scalafix compatible version
-ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value)
-ThisBuild / scalafixDependencies ++= List(
-  "com.github.vovapolu" %% "scaluzzi" % "0.1.23"
-)
+ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(`scala-2.13`)
 
 // githubWorkflow
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
