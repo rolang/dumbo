@@ -100,6 +100,11 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     ),
   )
   .settings(commonSettings)
+  .nativeSettings(
+    nativeConfig ~= {
+      _.withEmbedResources(true)
+    }
+  )
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
@@ -124,6 +129,9 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.6",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
+    nativeConfig ~= {
+      _.withEmbedResources(true)
+    },
   )
 
 lazy val flywayVersion     = "9.22.3"

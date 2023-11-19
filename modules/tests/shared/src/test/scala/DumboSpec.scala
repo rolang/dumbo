@@ -33,7 +33,7 @@ class DumboSpec extends ffstest.FTest {
     (1 to 5).toList.traverse_ { _ =>
       for {
         _       <- dropSchemas
-        res     <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, Path("db/test_1")))
+        res     <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, dumboWithResources("db/test_1")))
         ranks    = res.flatMap(_.migrations.map(_.installedRank)).sorted
         _        = assertEquals(ranks, List(1, 2, 3))
         history <- loadHistory(schema)
@@ -46,11 +46,11 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _    <- dumboMigrate(schema, Path("db/test_0"))
-      res  <- dumboMigrate(schema, Path("db/test_0_changed_checksum"), validateOnMigrate = true).attempt
+      _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
+      res  <- dumboMigrate(schema, dumboWithResources("db/test_0_changed_checksum"), validateOnMigrate = true).attempt
       _     = assert(res.isLeft)
       _     = assert(res.left.exists(_.getMessage().contains("checksum mismatch")))
-      vRes <- validateWithAppliedMigrations(schema, Path("db/test_0_changed_checksum"))
+      vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_changed_checksum"))
       _ = vRes match {
             case Invalid(errs) => assert(errs.toList.exists(_.getMessage().contains("checksum mismatch")))
             case _             => fail("expected failure")
@@ -62,8 +62,8 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _   <- dumboMigrate(schema, Path("db/test_0"))
-      res <- dumboMigrate(schema, Path("db/test_0_desc_changed"), validateOnMigrate = true).attempt
+      _   <- dumboMigrate(schema, dumboWithResources("db/test_0"))
+      res <- dumboMigrate(schema, dumboWithResources("db/test_0_desc_changed"), validateOnMigrate = true).attempt
       _    = assert(res.isLeft)
       _ = assert(res.left.exists { err =>
             val message = err.getMessage()
@@ -71,7 +71,7 @@ class DumboSpec extends ffstest.FTest {
               message.contains("test changed") &&
               message.contains("test base")
           })
-      vRes <- validateWithAppliedMigrations(schema, Path("db/test_0_desc_changed"))
+      vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_desc_changed"))
       _ = vRes match {
             case Invalid(errs) =>
               assert(errs.exists { err =>
@@ -89,12 +89,12 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _    <- dumboMigrate(schema, Path("db/test_0"))
-      res  <- dumboMigrate(schema, Path("db/test_0_missing_file"), validateOnMigrate = true).attempt
+      _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
+      res  <- dumboMigrate(schema, dumboWithResources("db/test_0_missing_file"), validateOnMigrate = true).attempt
       _     = assert(res.isLeft)
       _     = assert(res.left.exists(_.isInstanceOf[dumbo.exception.DumboValidationException]))
       _     = assert(res.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
-      vRes <- validateWithAppliedMigrations(schema, Path("db/test_0_missing_file"))
+      vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_missing_file"))
       _ = vRes match {
             case Invalid(errs) =>
               assert(errs.toList.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
@@ -107,17 +107,17 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      _    <- dumboMigrate(schema, Path("db/test_0"))
-      resA <- dumboMigrate(schema, Path("db/test_0_missing_file"), validateOnMigrate = false).attempt
-      resB <- dumboMigrate(schema, Path("db/test_0_changed_checksum"), validateOnMigrate = false).attempt
-      resC <- dumboMigrate(schema, Path("db/test_0_desc_changed"), validateOnMigrate = false).attempt
+      _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
+      resA <- dumboMigrate(schema, dumboWithResources("db/test_0_missing_file"), validateOnMigrate = false).attempt
+      resB <- dumboMigrate(schema, dumboWithResources("db/test_0_changed_checksum"), validateOnMigrate = false).attempt
+      resC <- dumboMigrate(schema, dumboWithResources("db/test_0_desc_changed"), validateOnMigrate = false).attempt
       _     = assert(resA.isRight && resB.isRight && resC.isRight)
     } yield ()
   }
 
   test("list migration files from resources") {
     for {
-      files <- Dumbo.listMigrationFiles[IO](resourcesPath(Path("db/test_1")))
+      files <- Dumbo.withResourcesIn[IO]("db/test_1").listMigrationFiles
       _ = files match {
             case Valid(files) =>
               assert(
@@ -134,7 +134,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("list migration files from relative path") {
     for {
-      files <- Dumbo.listMigrationFiles[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1"))
+      files <- Dumbo.withFilesIn[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1")).listMigrationFiles
       _ = files match {
             case Valid(files) =>
               assert(
@@ -149,7 +149,8 @@ class DumboSpec extends ffstest.FTest {
 
   test("list migration files from absolute path") {
     for {
-      files <- Dumbo.listMigrationFiles[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1").absolute)
+      files <-
+        Dumbo.withFilesIn[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1").absolute).listMigrationFiles
       _ = files match {
             case Valid(files) =>
               assert(
@@ -162,21 +163,9 @@ class DumboSpec extends ffstest.FTest {
     } yield ()
   }
 
-  test("fail with NoSuchFileException") {
-    for {
-      result <- Dumbo.listMigrationFiles[IO](resourcesPath(Path("db/non_existing/path"))).attempt
-      _       = assert(result.isLeft)
-      _ = assert(
-            result.left.exists(e =>
-              e.isInstanceOf[java.nio.file.NoSuchFileException] && e.getMessage().endsWith("db/non_existing/path")
-            )
-          )
-    } yield ()
-  }
-
   test("fail on files with same versions") {
     for {
-      result <- Dumbo.listMigrationFiles[IO](resourcesPath(Path("db/test_duplicate_versions")))
+      result <- Dumbo.withResourcesIn[IO]("db/test_duplicate_versions").listMigrationFiles
       _ = result match {
             case Invalid(errs) =>
               assert(errs.toList.exists { err =>
@@ -206,13 +195,13 @@ class DumboSpec extends ffstest.FTest {
       override def errorln[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))
     }
 
-    val resourcesDir                 = Path("db/test_long_running")
+    val withResources                = dumboWithResources("db/test_long_running")
     def logMatch(s: String): Boolean = s.startsWith("Awaiting query with pid")
 
     dbTest("don't log on waiting for lock release if under provided duration") {
       val testConsole = new TestConsole()
       for {
-        _ <- dumboMigrate("public", resourcesDir, logMigrationStateAfter = 5.second)(testConsole)
+        _ <- dumboMigrate("public", withResources, logMigrationStateAfter = 5.second)(testConsole)
         _  = assert(testConsole.logs.get().count(logMatch) == 0)
       } yield ()
     }
@@ -221,7 +210,7 @@ class DumboSpec extends ffstest.FTest {
       val testConsole = new TestConsole()
 
       for {
-        _ <- dumboMigrate("public", resourcesDir, logMigrationStateAfter = 800.millis)(testConsole)
+        _ <- dumboMigrate("public", withResources, logMigrationStateAfter = 800.millis)(testConsole)
         _  = assert(testConsole.logs.get().count(logMatch) >= 2)
       } yield ()
     }

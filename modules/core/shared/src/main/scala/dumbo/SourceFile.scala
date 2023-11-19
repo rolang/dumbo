@@ -4,8 +4,9 @@
 
 package dumbo
 
+import java.nio.file.Path as JPath
+
 import scala.annotation.tailrec
-import scala.concurrent.duration.FiniteDuration
 import scala.util.{Success, Try}
 
 import cats.data.NonEmptyList
@@ -14,7 +15,6 @@ import fs2.io.file.Path
 final case class SourceFile(
   description: SourceFileDescription,
   checksum: Int,
-  lastModified: FiniteDuration,
 ) extends Ordered[SourceFile] {
   def versionRaw: String         = description.version.raw
   def version: SourceFileVersion = description.version
@@ -47,6 +47,7 @@ final case class SourceFileDescription(
 }
 
 object SourceFileDescription {
+  def fromNioPath(p: JPath): Either[String, SourceFileDescription] = fromFilePath(Path.fromNioPath(p))
   def fromFilePath(p: Path): Either[String, SourceFileDescription] = {
     val pattern = "^V(.+)__(.+)\\.sql$".r
 

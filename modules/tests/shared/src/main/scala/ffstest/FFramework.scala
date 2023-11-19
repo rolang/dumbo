@@ -10,8 +10,7 @@ import cats.data.ValidatedNec
 import cats.effect.{IO, Resource, std}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
-import dumbo.{Dumbo, History, HistoryEntry}
-import fs2.io.file.Path
+import dumbo.{Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
 import natchez.Trace.Implicits.noop
 import skunk.implicits.*
@@ -36,25 +35,22 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
 
   def dumboMigrate(
     defaultSchema: String,
-    sourcesPath: Path,
+    withResources: DumboWithResourcesPartiallyApplied[IO],
     schemas: List[String] = Nil,
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
     logMigrationStateAfter: Duration = Duration.Inf,
   )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
     (if (logMigrationStateAfter.isFinite) {
-       Dumbo
-         .withMigrationStateLogAfter[IO](FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
-           sourceDir = resourcesPath(sourcesPath),
-           sessionResource = session,
-           defaultSchema = defaultSchema,
-           schemas = schemas.toSet,
-           schemaHistoryTable = schemaHistoryTable,
-           validateOnMigrate = validateOnMigrate,
-         )
+       withResources.withMigrationStateLogAfter(FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
+         sessionResource = session,
+         defaultSchema = defaultSchema,
+         schemas = schemas.toSet,
+         schemaHistoryTable = schemaHistoryTable,
+         validateOnMigrate = validateOnMigrate,
+       )
      } else {
-       Dumbo[IO](
-         sourceDir = resourcesPath(sourcesPath),
+       withResources.apply(
          sessionResource = session,
          defaultSchema = defaultSchema,
          schemas = schemas.toSet,
@@ -65,11 +61,10 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
 
   def validateWithAppliedMigrations(
     defaultSchema: String,
-    sourcesPath: Path,
+    withResources: DumboWithResourcesPartiallyApplied[IO],
     schemas: List[String] = Nil,
   ): IO[ValidatedNec[DumboValidationException, Unit]] =
-    Dumbo[IO](
-      sourceDir = resourcesPath(sourcesPath),
+    withResources(
       sessionResource = session,
       defaultSchema = defaultSchema,
       schemas = schemas.toSet,
