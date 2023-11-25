@@ -9,23 +9,27 @@ Simple database migration tool for Scala + Postgres with [skunk](https://typelev
 Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway compatible history state to allow you to switch to Flyway if necessary.
 
 Currently supports:
- - Versioned Migrations as specified by Flyway:  
-  ![Versioned Migrations](./docs/assets/versioned_migrations.png)  
 
-  Each versioned migration must be assigned a unique version.  
-  A simple increasing integer or any version is valid as long as it conforms to the usual dotted notation:
-  - 1
-  - 001
-  - 5.2
-  - 1.2.3.4.5.6.7.8.9
-  - 205.68
-  - 20130115113556
-  - 2013.1.15.11.35.56
-  - 2013.01.15.11.35.56
+- Versioned Migrations as specified by Flyway:  
+  ![Versioned Migrations](./docs/assets/versioned_migrations.png)
+
+Each versioned migration must be assigned a unique version.  
+ A simple increasing integer or any version is valid as long as it conforms to the usual dotted notation:
+
+- 1
+- 001
+- 5.2
+- 1.2.3.4.5.6.7.8.9
+- 205.68
+- 20130115113556
+- 2013.1.15.11.35.56
+- 2013.01.15.11.35.56
 
 ## Usage example
+
 Examples can be viewed in [modules/example](./modules/example/).  
-Similar to usage of the Flyway Java library, given versioned migrations in the resources folder: 
+Similar to usage of the Flyway Java library, given versioned migrations in the resources folder:
+
 ```
 example
   src
@@ -37,64 +41,95 @@ example
             V3__test_c.sql
             V2__test_b.sql
 ```
+
 The migration can be executed like:
+
 ```scala
 import cats.effect.{IO, IOApp}
 import dumbo.Dumbo
 import natchez.Trace.Implicits.noop
 
 object ExampleApp extends IOApp.Simple {
-  override def run: IO[Unit] = Dumbo[IO](
-    sourceDir = fs2.io.file.Path("db") / "migration",
-    sessionResource = skunk.Session
-      .single[IO](
+  override def run: IO[Unit] = Dumbo
+    .withResourcesIn[IO]("db/migration")
+    .apply(
+      sessionResource = skunk.Session.single[IO](
         host = "localhost",
         port = 5432,
         user = "postgres",
         database = "postgres",
         password = Some("postgres"),
       ),
-    defaultSchema = "public",
-  ).runMigration.flatMap { result =>
-    IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
-  }
+      defaultSchema = "public",
+    )
+    .runMigration
+    .flatMap { result =>
+      IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
+    }
 }
+
 ```
 
 To run the example locally with docker and sbt, start a Postgres docker container:
+
 ```shell
  docker run -p 5432:5432 --rm --name dumbo -e POSTGRES_PASSWORD=postgres postgres:15-alpine
 ```
 
 Run example with sbt:
+
 ```shell
 sbt 'example/run'
 ```
 
 ## Configurations
+
+### Configure the resources
+
+To read migration scripts from embedded resources:
+
 ```scala
-Dumbo[IO](
-  // relative or absolute path to directory with migration files
-  //
-  // on JVM a relative path will be looked up in the resources first (can be embedded into a jar or not)
-  // if the path is absolute or not found under resources then it will be looked up in the file system from working directory 
-  //
-  // on Native the path currently needs to be either absolute or relative to the working directory
-  // the directory with migration files needs to be added to the build, embedded resources support may be added soon...
-  sourceDir: Path,
-  
+val dumboWithResouces = Dumbo.withResourcesIn[IO]("db/migration")
+```
+
+Notes:
+
+- In Scala 3 the resource files will be listed / checked at compile time.
+  In case the resource location can't be found in the classpath or multiple locations were found, a compilation error will appear.
+- For Scala Native ensure to have [embedded resources](https://scala-native.org/en/stable/lib/javalib.html?highlight=resources#embedding-resources) enabled:
+- In Scala 2 the resource location will be checked at runtime
+- In Scala 2 + Native you'll be required to pass a list of resources as we can't list resources from a location at runtime, e.g. like:
+
+```scala
+val dumboWithResouces = Dumbo.withResources(
+  List(
+    ResourceFilePath("db/migration/V1__test.sql"),
+    ResourceFilePath("db/migration/V2__test_b.sql"))
+  )
+```
+
+To read migration scripts from the files system use:
+
+```scala
+val dumboWithResouces = Dumbo.withFilesIn[IO]("modules/example/src/main/resources/db/migration")
+```
+
+### Apply further configuration:
+
+```scala
+dumboWithResouces.apply(
   // skunk session resource
   sessionResource: Resource[F, Session[F]],
-  
+
   // default schema (the history state is going to be stored under that schema)
   defaultSchema: String = "public",
-  
+
   // schemas to include in the search
   schemas: Set[String] = Set.empty[String],
-  
+
   // migration history table name
   schemaHistoryTable: String = "flyway_schema_history",
-  
+
   // compare migration files with applied migrations
   // check e.g. for changed file content/description or missing files before migration
   validateOnMigrate: Boolean = true
@@ -102,7 +137,7 @@ Dumbo[IO](
 
 // migration progress logs can be added optionally in case you'd like dumbo to provide some feedback on longer running queries
 // it will perform requests to Postgres in given interval to check for queries that are causing the lock on migration history table
-Dumbo.withMigrationStateLogAfter[IO](5.seconds)(
+dumboWithResouces.withMigrationStateLogAfter[IO](5.seconds)(
   /* use config as above */
 )
 ```
