@@ -8,15 +8,15 @@ import natchez.Trace.Implicits.noop
 
 object ExampleApp extends IOApp.Simple {
   override def run: IO[Unit] = Dumbo
-    .withResourcesIn[IO]("db/migration")(
-      sessionResource = skunk.Session
-        .single[IO](
-          host = "localhost",
-          port = 5432,
-          user = "postgres",
-          database = "postgres",
-          password = Some("postgres"),
-        ),
+    .withResourcesIn[IO]("db/migration")
+    .apply(
+      sessionResource = skunk.Session.single[IO](
+        host = "localhost",
+        port = 5432,
+        user = "postgres",
+        database = "postgres",
+        password = Some("postgres"),
+      ),
       defaultSchema = "public",
     )
     .runMigration
