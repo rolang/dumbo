@@ -11,5 +11,5 @@ import cats.effect.IO
 
 trait FTestPlatform extends CatsEffectSuite {
   inline def dumboWithResources(path: String): DumboWithResourcesPartiallyApplied[IO] = Dumbo.withResourcesIn(path)
-  def dumboWithFiles(path: Path): DumboWithResourcesPartiallyApplied[IO]       = Dumbo.withFilesIn(path)
+  def dumboWithFiles(path: Path): DumboWithResourcesPartiallyApplied[IO]              = Dumbo.withFilesIn(path)
 }

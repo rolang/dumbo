@@ -4,7 +4,7 @@
 
 package dumbo
 
-import java.nio.file.{Path => JPath, Paths}
+import java.nio.file.{Path, Paths}
 
 final case class SourceFilePath(value: String) extends AnyVal {
   def toNioPath: Path = Paths.get(value)

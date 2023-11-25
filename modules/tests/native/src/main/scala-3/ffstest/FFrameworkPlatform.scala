@@ -15,5 +15,5 @@ trait FTestPlatform extends CatsEffectSuite {
   override def munitIORuntime = EpollRuntime.global
 
   inline def dumboWithResources(path: String): DumboWithResourcesPartiallyApplied[IO] = Dumbo.withResourcesIn(path)
-  def dumboWithFiles(path: Path): DumboWithResourcesPartiallyApplied[IO]       = Dumbo.withFilesIn(path)
+  def dumboWithFiles(path: Path): DumboWithResourcesPartiallyApplied[IO]              = Dumbo.withFilesIn(path)
 }

@@ -22,7 +22,8 @@ object SourceFilePath:
     getClass().getClassLoader().getResources(location).asScala.toList match
       case head :: Nil =>
         val base = Paths.get(head.toURI())
-        val resources = new File(base.toString()).list().map(fileName => fromPath(Path("/") / location / fileName)).toList
+        val resources =
+          new File(base.toString()).list().map(fileName => fromPath(Path("/") / location / fileName)).toList
         Expr(resources)
       case Nil => report.errorAndAbort(s"resource ${location} was not found")
       case multiple =>
@@ -34,9 +35,9 @@ object SourceFilePath:
     if getClass().getResourceAsStream(location) != null then x
     else report.errorAndAbort(s"resource ${location} was not found")
 
-  inline def apply(name: String): SourceFilePath = ${ applyImpl('name) }
+  inline def apply(name: String): SourceFilePath       = ${ applyImpl('name) }
   inline private def fromPath(p: Path): SourceFilePath = p.toString()
 
   extension (s: SourceFilePath)
-    inline def value: String = s
+    inline def value: String    = s
     inline def toNioPath: JPath = Paths.get(s)
