@@ -129,6 +129,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.6",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
+    scalaVersion := `scala-3`,
     nativeConfig ~= {
       _.withEmbedResources(true)
     },

@@ -5,7 +5,7 @@
 package dumbo
 
 import cats.effect.IO
-import dumbo.exception.MultipleResoucesException
+import dumbo.exception.{MultipleResoucesException, ResourcesLocationNotFund}
 
 class DumboJvmSpecScala2 extends ffstest.FTest {
   test("fail on multiple resources") {
@@ -15,6 +15,18 @@ class DumboJvmSpecScala2 extends ffstest.FTest {
             case Right(_)  => fail("Expecting a failure")
             case Left(err) => assert(err.isInstanceOf[MultipleResoucesException])
           }
+    } yield ()
+  }
+
+  test("fail with ResourcesLocationNotFund") {
+    for {
+      result <- Dumbo.withResourcesIn[IO]("db/non_existing/path").listMigrationFiles.attempt
+      _       = assert(result.isLeft)
+      _ = assert(
+            result.left.exists(e =>
+              e.isInstanceOf[ResourcesLocationNotFund] && e.getMessage().contains("db/non_existing/path")
+            )
+          )
     } yield ()
   }
 }
