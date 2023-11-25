@@ -122,9 +122,9 @@ class DumboSpec extends ffstest.FTest {
             case Valid(files) =>
               assert(
                 files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
-                  (SourceFileVersion("1", NonEmptyList.of(1)), "V1__test.sql"),
-                  (SourceFileVersion("2", NonEmptyList.of(2)), "V2__test_b.sql"),
-                  (SourceFileVersion("3", NonEmptyList.of(3)), "V3__test_c.sql"),
+                  (ResourceFileVersion("1", NonEmptyList.of(1)), "V1__test.sql"),
+                  (ResourceFileVersion("2", NonEmptyList.of(2)), "V2__test_b.sql"),
+                  (ResourceFileVersion("3", NonEmptyList.of(3)), "V3__test_c.sql"),
                 )
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
@@ -139,7 +139,7 @@ class DumboSpec extends ffstest.FTest {
             case Valid(files) =>
               assert(
                 files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
-                  (SourceFileVersion("1", NonEmptyList.of(1)), "V1__non_resource.sql")
+                  (ResourceFileVersion("1", NonEmptyList.of(1)), "V1__non_resource.sql")
                 )
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
@@ -155,7 +155,7 @@ class DumboSpec extends ffstest.FTest {
             case Valid(files) =>
               assert(
                 files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
-                  (SourceFileVersion("1", NonEmptyList.of(1)), "V1__non_resource.sql")
+                  (ResourceFileVersion("1", NonEmptyList.of(1)), "V1__non_resource.sql")
                 )
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))

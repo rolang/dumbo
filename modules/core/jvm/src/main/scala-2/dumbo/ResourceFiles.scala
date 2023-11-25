@@ -13,12 +13,12 @@ import cats.effect.kernel.Sync
 import cats.implicits.*
 import dumbo.exception.*
 
-final case class SourceFilePath(value: String) extends AnyVal {
+final case class ResourceFilePath(value: String) extends AnyVal {
   def toNioPath: Path = Paths.get(value)
 }
 
-object SourceFilePath {
-  def fromResourcesDir[F[_]: Sync](location: String): F[List[SourceFilePath]] =
+object ResourceFilePath {
+  def fromResourcesDir[F[_]: Sync](location: String): F[List[ResourceFilePath]] =
     Sync[F].delay(getClass().getClassLoader().getResources(location).asScala.toList).flatMap {
       case head :: Nil =>
         Sync[F].delay {
@@ -37,5 +37,5 @@ object SourceFilePath {
         )
     }
 
-  def apply(p: Path): SourceFilePath = SourceFilePath(p.toString())
+  def apply(p: Path): ResourceFilePath = ResourceFilePath(p.toString())
 }

@@ -4,10 +4,7 @@
 
 package dumbo
 
-import scala.concurrent.duration.*
-
 import cats.effect.IO
-import cats.implicits.*
 import dumbo.exception.ResourcesLocationNotFund
 
 class DumboSpecScala2 extends ffstest.FTest {

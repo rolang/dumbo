@@ -5,12 +5,12 @@
 package dumbo.internal
 
 import cats.effect.Sync
-import dumbo.SourceFilePath
+import dumbo.ResourceFilePath
 import dumbo.DumboWithResourcesPartiallyApplied
 
 private[dumbo] trait DumboPlatform {
   inline def withResourcesIn[F[_]: Sync](location: String): DumboWithResourcesPartiallyApplied[F] = {
-    val resources = SourceFilePath.fromResourcesDir(location)
-    new DumboWithResourcesPartiallyApplied[F](FsPlatform.embeddedResources(Sync[F].pure(resources)))
+    val resources = ResourceFilePath.fromResourcesDir(location)
+    new DumboWithResourcesPartiallyApplied[F](ResourceReader.embeddedResources(Sync[F].pure(resources)))
   }
 }

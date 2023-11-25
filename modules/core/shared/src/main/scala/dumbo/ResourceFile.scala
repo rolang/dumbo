@@ -12,49 +12,49 @@ import scala.util.{Success, Try}
 import cats.data.NonEmptyList
 import fs2.io.file.Path
 
-final case class SourceFile(
-  description: SourceFileDescription,
+final case class ResourceFile(
+  description: ResourceFileDescription,
   checksum: Int,
-) extends Ordered[SourceFile] {
-  def versionRaw: String         = description.version.raw
-  def version: SourceFileVersion = description.version
-  def scriptDescription: String  = description.description
-  def path: Path                 = description.path
+) extends Ordered[ResourceFile] {
+  def versionRaw: String           = description.version.raw
+  def version: ResourceFileVersion = description.version
+  def scriptDescription: String    = description.description
+  def path: Path                   = description.path
 
   override def hashCode: Int = version.hashCode
 
-  def compare(that: SourceFile): Int = version.compare(that.version)
+  def compare(that: ResourceFile): Int = version.compare(that.version)
 
   override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
-    case s: SourceFile => version.equals(s.version)
-    case _             => false
+    case s: ResourceFile => version.equals(s.version)
+    case _               => false
   }
 }
 
-final case class SourceFileDescription(
-  version: SourceFileVersion,
+final case class ResourceFileDescription(
+  version: ResourceFileVersion,
   description: String,
   path: Path,
-) extends Ordered[SourceFileDescription] {
-  def compare(that: SourceFileDescription): Int = this.version.compare(that.version)
+) extends Ordered[ResourceFileDescription] {
+  def compare(that: ResourceFileDescription): Int = this.version.compare(that.version)
 
   override def hashCode: Int = this.version.hashCode
 
   override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
-    case s: SourceFileDescription => this.version.equals(s.version)
-    case _                        => false
+    case s: ResourceFileDescription => this.version.equals(s.version)
+    case _                          => false
   }
 }
 
-object SourceFileDescription {
-  def fromNioPath(p: JPath): Either[String, SourceFileDescription] = fromFilePath(Path.fromNioPath(p))
-  def fromFilePath(p: Path): Either[String, SourceFileDescription] = {
+object ResourceFileDescription {
+  def fromNioPath(p: JPath): Either[String, ResourceFileDescription] = fromFilePath(Path.fromNioPath(p))
+  def fromFilePath(p: Path): Either[String, ResourceFileDescription] = {
     val pattern = "^V(.+)__(.+)\\.sql$".r
 
     p.fileName.toString match {
       case pattern(version, name) =>
-        SourceFileVersion.fromString(version).map { v =>
-          SourceFileDescription(
+        ResourceFileVersion.fromString(version).map { v =>
+          ResourceFileDescription(
             version = v,
             description = name.replace("_", " "),
             path = p,
@@ -66,11 +66,11 @@ object SourceFileDescription {
   }
 }
 
-final case class SourceFileVersion(
+final case class ResourceFileVersion(
   raw: String,
   parts: NonEmptyList[Long],
-) extends Ordered[SourceFileVersion] {
-  def compare(that: SourceFileVersion): Int = {
+) extends Ordered[ResourceFileVersion] {
+  def compare(that: ResourceFileVersion): Int = {
     @tailrec
     def cmpr(a: List[Long], b: List[Long]): Int =
       (a, b) match {
@@ -94,17 +94,17 @@ final case class SourceFileVersion(
   override def hashCode: Int = parts.reverse.foldLeft("")(_ + _.toString).toInt
 
   override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
-    case s: SourceFileVersion => this.compare(s) == 0
-    case _                    => false
+    case s: ResourceFileVersion => this.compare(s) == 0
+    case _                      => false
   }
 }
 
-object SourceFileVersion {
-  def fromString(version: String): Either[String, SourceFileVersion] =
+object ResourceFileVersion {
+  def fromString(version: String): Either[String, ResourceFileVersion] =
     Try(version.split('.').map(_.toLong)) match {
       case Success(Array(x, xs*)) =>
         Right(
-          SourceFileVersion(
+          ResourceFileVersion(
             raw = version,
             parts = NonEmptyList.of(x, xs*),
           )

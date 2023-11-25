@@ -21,7 +21,7 @@ final case class HistoryEntry(
   executionTimeMs: Int,
   success: Boolean,
 ) {
-  def sourceFileVersion: Option[SourceFileVersion] = version.flatMap(SourceFileVersion.fromString(_).toOption)
+  def sourceFileVersion: Option[ResourceFileVersion] = version.flatMap(ResourceFileVersion.fromString(_).toOption)
 }
 
 object HistoryEntry {
