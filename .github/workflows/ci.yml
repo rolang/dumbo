@@ -81,7 +81,7 @@ jobs:
 
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
-        run: clang --version && sudo apt update && sudo apt install clang libutf8proc-dev -y && clang --version
+        run: sudo apt-get update && sudo apt-get install clang libutf8proc-dev -y
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
