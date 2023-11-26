@@ -13,8 +13,8 @@ import dumbo.exception.DumboValidationException
 import dumbo.{Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
 import natchez.Trace.Implicits.noop
-import skunk.implicits.*
 import skunk.Session
+import skunk.implicits.*
 
 trait FTest extends CatsEffectSuite with FTestPlatform {
   def postgresPort: Int = 5432
