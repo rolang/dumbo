@@ -126,11 +126,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     scalaVersion := `scala-3`,
     nativeConfig ~= {
-      _.withEmbedResources(
-        // disabling embdedded resources for now in CI as it causes flaky tests.
-        // should remove once this is resolved: https://github.com/scala-native/scala-native/issues/2024
-        true // sys.env.get("CI").isEmpty
-      )
+      _.withEmbedResources(true)
     },
   )
 

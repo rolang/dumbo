@@ -14,11 +14,7 @@ import dumbo.Dumbo
 trait FTestPlatform extends CatsEffectSuite {
   override def munitIORuntime = EpollRuntime.global
 
-  inline def dumboWithResources(path: String): DumboWithResourcesPartiallyApplied[IO] =
-    // using this to disable embdedded resources for now in CI as it causes flaky tests: https://github.com/scala-native/scala-native/issues/2024
-    Dumbo.withResourcesIn(path)
-    // if sys.env.get("CI").isEmpty then Dumbo.withResourcesIn(path)
-    // else Dumbo.withFilesIn(Path("modules/tests/shared/src/test/resources") / path)
+  inline def dumboWithResources(path: String): DumboWithResourcesPartiallyApplied[IO] = Dumbo.withResourcesIn(path)
 
   def dumboWithFiles(path: Path): DumboWithResourcesPartiallyApplied[IO] = Dumbo.withFilesIn(path)
 }
