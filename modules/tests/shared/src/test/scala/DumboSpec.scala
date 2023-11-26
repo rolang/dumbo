@@ -117,7 +117,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("list migration files from resources") {
     for {
-      files <- Dumbo.withResourcesIn[IO]("db/test_1").listMigrationFiles
+      files <- dumboWithResources("db/test_1").listMigrationFiles
       _ = files match {
             case Valid(files) =>
               assert(
@@ -165,7 +165,7 @@ class DumboSpec extends ffstest.FTest {
 
   test("fail on files with same versions") {
     for {
-      result <- Dumbo.withResourcesIn[IO]("db/test_duplicate_versions").listMigrationFiles
+      result <- dumboWithResources("db/test_duplicate_versions").listMigrationFiles
       _ = result match {
             case Invalid(errs) =>
               assert(errs.toList.exists { err =>
