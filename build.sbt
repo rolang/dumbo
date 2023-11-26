@@ -88,7 +88,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
-lazy val skunkVersion = "0.6.1"
+lazy val skunkVersion = "0.6.2"
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .enablePlugins(AutomateHeaderPlugin)
@@ -112,7 +112,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
       "org.scalameta" %%% "munit"             % "1.0.0-M10",
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3",
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4",
     ),
     testFrameworks += new TestFramework("munit.Framework"),
     testOptions += {
@@ -130,8 +130,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "9.22.3"
-lazy val postgresqlVersion = "42.6.0"
+lazy val flywayVersion     = "10.1.0"
+lazy val postgresqlVersion = "42.7.0"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
   .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
@@ -141,8 +141,9 @@ lazy val testsFlyway = project
     publish / skip := true,
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
-      "org.flywaydb"   % "flyway-core" % flywayVersion,
-      "org.postgresql" % "postgresql"  % postgresqlVersion,
+      "org.flywaydb"   % "flyway-core"                % flywayVersion,
+      "org.flywaydb"   % "flyway-database-postgresql" % flywayVersion,
+      "org.postgresql" % "postgresql"                 % postgresqlVersion,
     ),
     testFrameworks += new TestFramework("munit.Framework"),
   )
