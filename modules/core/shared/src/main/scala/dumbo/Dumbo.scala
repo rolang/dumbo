@@ -16,7 +16,7 @@ import cats.effect.std.Console
 import cats.effect.{Async, Resource, Sync}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
-import dumbo.internal.FsPlatform
+import dumbo.internal.ResourceReader
 import fs2.Stream
 import fs2.io.file.*
 import skunk.*
@@ -26,8 +26,78 @@ import skunk.implicits.*
 import skunk.util.Origin
 import skunk.Command as SqlCommand
 
-class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
-  sourceDir: Path,
+final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) {
+  def apply(
+    sessionResource: Resource[F, Session[F]],
+    defaultSchema: String = "public",
+    schemas: Set[String] = Set.empty[String],
+    schemaHistoryTable: String = "flyway_schema_history",
+    validateOnMigrate: Boolean = true,
+  )(implicit S: Sync[F], C: Console[F]) = new Dumbo[F](
+    resReader = reader,
+    sessionResource = sessionResource,
+    defaultSchema = defaultSchema,
+    schemas = schemas,
+    schemaHistoryTable = schemaHistoryTable,
+    validateOnMigrate = validateOnMigrate,
+  )
+
+  def withMigrationStateLogAfter(logMigrationStateAfter: FiniteDuration)(
+    sessionResource: Resource[F, Session[F]],
+    defaultSchema: String = "public",
+    schemas: Set[String] = Set.empty[String],
+    schemaHistoryTable: String = "flyway_schema_history",
+    validateOnMigrate: Boolean = true,
+  )(implicit A: Async[F], C: Console[F]): Dumbo[F] =
+    new Dumbo[F](
+      resReader = reader,
+      sessionResource = sessionResource,
+      defaultSchema = defaultSchema,
+      schemas = schemas,
+      schemaHistoryTable = schemaHistoryTable,
+      validateOnMigrate = validateOnMigrate,
+      progressMonitor = Async[F].background {
+        Stream
+          .evalSeq(
+            sessionResource
+              .use(
+                _.execute(
+                  sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
+                        FROM pg_locks l
+                        JOIN pg_stat_all_tables t ON t.relid = l.relation
+                        JOIN pg_stat_activity ps ON ps.pid = l.pid
+                        WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
+                    .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
+                ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
+              )
+          )
+          .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
+            for {
+              now         <- Clock[F].realTimeInstant
+              startedAgo   = now.getEpochSecond() - start.toEpochSecond()
+              changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
+              queryLogSize = 150
+              queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
+              _ <-
+                Console[F].println(
+                  s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
+                    s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
+                )
+            } yield ()
+          }
+          .repeat
+          .metered(logMigrationStateAfter)
+          .compile
+          .drain
+      }.void,
+    )
+
+  def listMigrationFiles(implicit S: Sync[F]): F[ValidatedNec[DumboValidationException, List[ResourceFile]]] =
+    Dumbo.listMigrationFiles(reader)
+}
+
+class Dumbo[F[_]: Sync: Console](
+  resReader: ResourceReader[F],
   sessionResource: Resource[F, Session[F]],
   defaultSchema: String = "public",
   schemas: Set[String] = Set.empty,
@@ -43,7 +113,7 @@ class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
 
   private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${schema}".command
 
-  private def transact(source: SourceFile, fs: FsPlatform[F], session: Session[F]): F[HistoryEntry] =
+  private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry] =
     for {
       _ <-
         Console[F].println(
@@ -80,7 +150,7 @@ class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
       _ <- Console[F].println(s"Migration to version ${source.versionRaw} - ${source.scriptDescription} completed")
     } yield entry
 
-  private def validationGuard(session: Session[F], sourceFiles: List[SourceFile]) =
+  private def validationGuard(session: Session[F], sourceFiles: List[ResourceFile]) =
     if (sourceFiles.nonEmpty) {
       session
         .execute(dumboHistory.loadAllQuery)
@@ -95,8 +165,8 @@ class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
 
   private def migrateToNext(
     session: Session[F],
-    fs: FsPlatform[F],
-  )(sourceFiles: List[SourceFile]): F[Option[(HistoryEntry, List[SourceFile])]] =
+    fs: ResourceReader[F],
+  )(sourceFiles: List[ResourceFile]): F[Option[(HistoryEntry, List[ResourceFile])]] =
     sourceFiles match {
       case Nil => none.pure[F]
       case _ =>
@@ -148,26 +218,24 @@ class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
            case _            => ().pure[F]
          }
 
-    migrationResult <- FsPlatform.forDir[F](sourceDir).use { fs =>
-                         for {
-                           sourceFiles <- listMigrationFiles(sourceDir, fs).flatMap {
-                                            case Valid(f) => f.pure[F]
-                                            case Invalid(errs) =>
-                                              new DumboValidationException(
-                                                s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
-                                              ).raiseError[F, List[SourceFile]]
-                                          }
-                           _ <- Console[F].println(
-                                  s"Found ${sourceFiles.size} versioned migration files in ${fs.sourcesUri}"
-                                )
-                           _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
-                           migrationResult <- Stream
-                                                .unfoldEval(sourceFiles)(migrateToNext(session, fs))
-                                                .compile
-                                                .toList
-                                                .map(Dumbo.MigrationResult(_))
-                         } yield migrationResult
-                       }
+    migrationResult <- for {
+                         sourceFiles <- listMigrationFiles(resReader).flatMap {
+                                          case Valid(f) => f.pure[F]
+                                          case Invalid(errs) =>
+                                            new DumboValidationException(
+                                              s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
+                                            ).raiseError[F, List[ResourceFile]]
+                                        }
+                         _ <- Console[F].println(
+                                s"Found ${sourceFiles.size} versioned migration files"
+                              )
+                         _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
+                         migrationResult <- Stream
+                                              .unfoldEval(sourceFiles)(migrateToNext(session, resReader))
+                                              .compile
+                                              .toList
+                                              .map(Dumbo.MigrationResult(_))
+                       } yield migrationResult
 
     _ <- migrationResult.migrations.map(_.installedRank).sorted(Ordering[Int].reverse).headOption match {
            case None =>
@@ -183,7 +251,7 @@ class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
 
   private def validate(
     history: List[HistoryEntry],
-    sourceFiles: List[SourceFile],
+    sourceFiles: List[ResourceFile],
   ): ValidatedNec[DumboValidationException, Unit] = {
     val sourceFilesMap = sourceFiles.map(s => (s.versionRaw, s)).toMap
 
@@ -219,101 +287,34 @@ class Dumbo[F[_]: Sync: Console: Files] private[dumbo] (
   }
 
   def runValidationWithHistory: F[ValidatedNec[DumboValidationException, Unit]] =
-    listMigrationFiles(sourceDir).flatMap {
+    listMigrationFiles(resReader).flatMap {
       case Valid(sourceFiles) =>
         sessionResource.use(_.execute(dumboHistory.loadAllQuery).map(history => validate(history, sourceFiles)))
       case Invalid(c) => c.invalid.pure[F]
     }
 }
 
-object Dumbo {
+object Dumbo extends internal.DumboPlatform {
   final case class MigrationResult(migrations: List[HistoryEntry]) {
     val migrationsExecuted: Int = migrations.length
   }
 
-  def apply[F[_]: Sync: Console: Files](
-    sourceDir: Path,
-    sessionResource: Resource[F, Session[F]],
-    defaultSchema: String = "public",
-    schemas: Set[String] = Set.empty[String],
-    schemaHistoryTable: String = "flyway_schema_history",
-    validateOnMigrate: Boolean = true,
-  ) = new Dumbo[F](
-    sourceDir = sourceDir,
-    sessionResource = sessionResource,
-    defaultSchema = defaultSchema,
-    schemas = schemas,
-    schemaHistoryTable = schemaHistoryTable,
-    validateOnMigrate = validateOnMigrate,
-  )
+  def withResources[F[_]: Sync](resources: List[ResourceFilePath]): DumboWithResourcesPartiallyApplied[F] =
+    new DumboWithResourcesPartiallyApplied[F](ResourceReader.embeddedResources(Sync[F].pure(resources)))
 
-  def withMigrationStateLogAfter[F[_]: Async: Console: Files](logMigrationStateAfter: FiniteDuration)(
-    sourceDir: Path,
-    sessionResource: Resource[F, Session[F]],
-    defaultSchema: String = "public",
-    schemas: Set[String] = Set.empty[String],
-    schemaHistoryTable: String = "flyway_schema_history",
-    validateOnMigrate: Boolean = true,
-  ): Dumbo[F] =
-    new Dumbo[F](
-      sourceDir = sourceDir,
-      sessionResource = sessionResource,
-      defaultSchema = defaultSchema,
-      schemas = schemas,
-      schemaHistoryTable = schemaHistoryTable,
-      validateOnMigrate = validateOnMigrate,
-      progressMonitor = Async[F].background {
-        Stream
-          .evalSeq(
-            sessionResource
-              .use(
-                _.execute(
-                  sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
-                        FROM pg_locks l
-                        JOIN pg_stat_all_tables t ON t.relid = l.relation
-                        JOIN pg_stat_activity ps ON ps.pid = l.pid
-                        WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
-                    .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
-                ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
-              )
-          )
-          .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
-            for {
-              now         <- Clock[F].realTimeInstant
-              startedAgo   = now.getEpochSecond() - start.toEpochSecond()
-              changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
-              queryLogSize = 150
-              queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
-              _ <-
-                Console[F].println(
-                  s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
-                    s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
-                )
-            } yield ()
-          }
-          .repeat
-          .metered(logMigrationStateAfter)
-          .compile
-          .drain
-      }.void,
-    )
-
-  def listMigrationFiles[F[_]: Sync: Files](
-    sourceDir: Path
-  ): F[ValidatedNec[DumboValidationException, List[SourceFile]]] =
-    FsPlatform.forDir[F](sourceDir).use(listMigrationFiles(sourceDir, _))
+  def withFilesIn[F[_]: Files](dir: Path): DumboWithResourcesPartiallyApplied[F] =
+    new DumboWithResourcesPartiallyApplied[F](ResourceReader.fileFs(dir))
 
   private[dumbo] def listMigrationFiles[F[_]: Sync](
-    sourceDir: Path,
-    fs: FsPlatform[F],
-  ): F[ValidatedNec[DumboValidationException, List[SourceFile]]] =
-    readSourceFiles[F](sourceDir, fs).compile.toList.map { sf =>
+    fs: ResourceReader[F]
+  ): F[ValidatedNec[DumboValidationException, List[ResourceFile]]] =
+    readResourceFiles[F](fs).compile.toList.map { sf =>
       val (errs, files) = (sf.collect { case Left(err) => err }, sf.collect { case Right(v) => v })
       val duplicates    = files.groupBy(_.version).filter(_._2.length > 1).toList
 
       (duplicates, errs.map(new DumboValidationException(_))) match {
         case (Nil, Nil)     => files.sorted.validNec[DumboValidationException]
-        case (Nil, x :: xs) => NonEmptyChain(x, xs*).invalid[List[SourceFile]]
+        case (Nil, x :: xs) => NonEmptyChain(x, xs*).invalid[List[ResourceFile]]
         case (diff, exceptions) =>
           NonEmptyChain(
             new DumboValidationException(
@@ -321,31 +322,29 @@ object Dumbo {
                   |Offenders:\n${diff.flatMap(_._2.map(_.path)).mkString("\n")}""".stripMargin
             ),
             exceptions*
-          ).invalid[List[SourceFile]]
+          ).invalid[List[ResourceFile]]
       }
     }
 
-  private[dumbo] def readSourceFiles[F[_]: Sync](dir: Path, fs: FsPlatform[F]): Stream[F, Either[String, SourceFile]] =
-    fs.list(dir)
+  private[dumbo] def readResourceFiles[F[_]: Sync](fs: ResourceReader[F]): Stream[F, Either[String, ResourceFile]] =
+    fs.list
       .filter(_.extName.endsWith(".sql")) // TODO: include .conf files
       .evalMap { path =>
-        SourceFileDescription.fromFilePath(path) match {
+        ResourceFileDescription.fromFilePath(path) match {
           case Right(desc) =>
             for {
-              checksum     <- checksum[F](path, fs)
-              lastModified <- fs.getLastModifiedTime(path)
-            } yield SourceFile(
+              checksum <- checksum[F](path, fs)
+            } yield ResourceFile(
               description = desc,
               checksum = checksum,
-              lastModified = lastModified,
             ).asRight[String]
-          case Left(err) => err.asLeft[SourceFile].pure[F]
+          case Left(err) => err.asLeft[ResourceFile].pure[F]
         }
       }
 
   // implementation of checksum from Flyway
   // https://github.com/flyway/flyway/blob/main/flyway-core/src/main/java/org/flywaydb/core/internal/resolver/ChecksumCalculator.java#L59
-  private[dumbo] def checksum[F[_]: Sync](p: Path, fs: FsPlatform[F]): F[Int] =
+  private[dumbo] def checksum[F[_]: Sync](p: Path, fs: ResourceReader[F]): F[Int] =
     for {
       crc32 <- (new CRC32()).pure[F]
       _ <- fs.readUtf8Lines(p)

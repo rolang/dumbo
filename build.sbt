@@ -28,7 +28,7 @@ ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List("sudo apt update && sudo apt install libutf8proc-dev"),
+    commands = List("sudo apt-get update && sudo apt-get install clang libutf8proc-dev -y"),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
@@ -124,6 +124,10 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.6",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
+    scalaVersion := `scala-3`,
+    nativeConfig ~= {
+      _.withEmbedResources(true)
+    },
   )
 
 lazy val flywayVersion     = "9.22.3"
