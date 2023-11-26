@@ -28,7 +28,7 @@ ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List("sudo apt update && sudo apt install libutf8proc-dev"),
+    commands = List("sudo apt update && sudo apt install clang libutf8proc-dev -y"),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
@@ -129,7 +129,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
       _.withEmbedResources(
         // disabling embdedded resources for now in CI as it causes flaky tests.
         // should remove once this is resolved: https://github.com/scala-native/scala-native/issues/2024
-        sys.env.get("CI").isEmpty
+        true // sys.env.get("CI").isEmpty
       )
     },
   )
