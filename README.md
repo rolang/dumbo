@@ -96,7 +96,7 @@ Notes:
 
 - In Scala 3 the resource files will be listed / checked at compile time.
   In case the resource location can't be found in the classpath or multiple locations were found, a compilation error will appear.
-- For Scala Native ensure to have [embedded resources](https://scala-native.org/en/stable/lib/javalib.html?highlight=resources#embedding-resources) enabled:
+- For Scala Native ensure to have [embedded resources](https://scala-native.org/en/stable/lib/javalib.html?highlight=resources#embedding-resources) enabled.
 - In Scala 2 the resource location will be checked at runtime
 - In Scala 2 + Native you'll be required to pass a list of resources as we can't list resources from a location at runtime, e.g. like:
 
@@ -111,7 +111,9 @@ val dumboWithResouces = Dumbo.withResources(
 To read migration scripts from the files system use:
 
 ```scala
-val dumboWithResouces = Dumbo.withFilesIn[IO]("modules/example/src/main/resources/db/migration")
+val dumboWithResouces = Dumbo.withFilesIn[IO](
+  fs2.io.file.Path("modules/example/src/main/resources/db/migration")
+)
 ```
 
 ### Apply further configuration:
