@@ -17,7 +17,7 @@ object ExampleApp extends IOApp.Simple {
         database = "postgres",
         password = Some("postgres"),
       ),
-      defaultSchema = "public",
+      defaultSchema = "dumbo",
     )
     .runMigration
     .flatMap { result =>

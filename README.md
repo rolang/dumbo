@@ -103,8 +103,8 @@ Notes:
 ```scala
 val dumboWithResouces = Dumbo.withResources(
   List(
-    ResourceFilePath("db/migration/V1__test.sql"),
-    ResourceFilePath("db/migration/V2__test_b.sql"))
+    ResourceFilePath("/db/migration/V1__test.sql"),
+    ResourceFilePath("/db/migration/V2__test_b.sql"))
   )
 ```
 
