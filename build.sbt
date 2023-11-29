@@ -46,6 +46,13 @@ ThisBuild / githubWorkflowBuild := {
     cond = Some("(matrix.project == 'rootJVM') && (matrix.scala == '2.13')"),
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
+
+ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
+  List("example/run"),
+  name = Some("Run example (covers reading resources from a jar)"),
+  cond = Some("matrix.project == 'rootJVM'"),
+)
+
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
   MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.12")),
   MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.13")),
