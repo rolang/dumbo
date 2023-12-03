@@ -16,7 +16,7 @@ import cats.effect.std.Console
 import cats.effect.{Async, Resource, Sync}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
-import dumbo.internal.ResourceReader
+import dumbo.internal.{ResourceReader, Statements}
 import fs2.Stream
 import fs2.io.file.*
 import skunk.*
@@ -113,42 +113,46 @@ class Dumbo[F[_]: Sync: Console](
 
   private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${schema}".command
 
-  private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry] =
+  private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] =
     for {
       _ <-
         Console[F].println(
           s"""Migrating schema "$defaultSchema" to version ${source.versionRaw} - ${source.scriptDescription}"""
+            + s"${if (!source.executeInTransaction) " [non-transactional]" else ""}"
         )
 
-      statement <- fs.readUtf8(source.path)
-                     .compile
-                     .toList
-                     .map(_.mkString)
+      statements <- fs.readUtf8(source.path)
+                      .compile
+                      .toList
+                      .map(_.mkString)
+                      .map { sql =>
+                        // for non transactional operations we need to split the content into single statements
+                        // When a simple Query message contains more than one SQL statement (separated by semicolons), those statements are executed as a single transaction.
+                        // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT
+                        if (source.executeInTransaction) Vector(sql) else Statements.intoSingleStatements(sql)
+                      }
 
       (duration, _) <- Sync[F].timed {
-                         session
-                           .execute(
+                         statements
+                           .map(sql =>
                              SqlCommand(
-                               sql = statement,
+                               sql = sql,
                                origin = Origin(source.path.toString, line = 0),
                                Void.codec,
                              )
                            )
+                           .traverse_(session.execute(_))
                        }
-      entry <- session
-                 .unique(dumboHistory.insertSQLEntry)(
-                   HistoryEntry.New(
-                     version = source.versionRaw,
-                     description = source.scriptDescription,
-                     `type` = "SQL",
-                     script = source.path.fileName.toString,
-                     checksum = Some(source.checksum),
-                     executionTimeMs = duration.toMillis.toInt,
-                     success = true,
-                   )
-                 )
       _ <- Console[F].println(s"Migration to version ${source.versionRaw} - ${source.scriptDescription} completed")
-    } yield entry
+    } yield HistoryEntry.New(
+      version = source.versionRaw,
+      description = source.scriptDescription,
+      `type` = "SQL",
+      script = source.path.fileName.toString,
+      checksum = Some(source.checksum),
+      executionTimeMs = duration.toMillis.toInt,
+      success = true,
+    )
 
   private def validationGuard(session: Session[F], sourceFiles: List[ResourceFile]) =
     if (sourceFiles.nonEmpty) {
@@ -179,10 +183,18 @@ class Dumbo[F[_]: Sync: Console](
             latestInstalled <- session.unique(dumboHistory.findLatestInstalled).map(_.flatMap(_.sourceFileVersion))
             result <- sourceFiles.dropWhile(s => latestInstalled.exists(s.version <= _)) match {
                         case head :: tail =>
-                          for {
-                            _     <- session.execute(sql"SET SEARCH_PATH = #${allSchemas.toList.mkString(",")}".command)
-                            entry <- transact(head, fs, session)
-                          } yield (entry, tail).some
+                          // acquire a new session for non-transactional operation
+                          val transactSession: Resource[F, Session[F]] =
+                            if (head.executeInTransaction) Resource.pure(session) else sessionResource
+
+                          transactSession.use { ts =>
+                            for {
+                              _        <- ts.execute(sql"SET SEARCH_PATH = #${allSchemas.toList.mkString(",")}".command)
+                              newEntry <- transact(head, fs, ts)
+                            } yield newEntry
+                          }.flatMap { newEntry =>
+                            session.unique(dumboHistory.insertSQLEntry)(newEntry)
+                          }.map((_, tail).some)
                         case _ => none.pure[F]
                       }
           } yield result
@@ -326,20 +338,35 @@ object Dumbo extends internal.DumboPlatform {
       }
     }
 
-  private[dumbo] def readResourceFiles[F[_]: Sync](fs: ResourceReader[F]): Stream[F, Either[String, ResourceFile]] =
+  private[dumbo] def readResourceFiles[F[_]: Sync](
+    fs: ResourceReader[F]
+  ): Stream[F, Either[String, ResourceFile]] =
     fs.list
-      .filter(_.extName.endsWith(".sql")) // TODO: include .conf files
+      .filter(f => f.extName.endsWith(".sql") || f.extName.endsWith(".sql.conf"))
       .evalMap { path =>
-        ResourceFileDescription.fromFilePath(path) match {
-          case Right(desc) =>
-            for {
-              checksum <- checksum[F](path, fs)
-            } yield ResourceFile(
-              description = desc,
-              checksum = checksum,
-            ).asRight[String]
-          case Left(err) => err.asLeft[ResourceFile].pure[F]
-        }
+        val confPath = Path(path.toString + ".conf")
+
+        fs.exists(confPath)
+          .flatMap {
+            case true  => fs.readUtf8Lines(confPath).compile.toList.map(ResourceFileConfig.fromLines)
+            case false => Set.empty[ResourceFileConfig].asRight[String].pure[F]
+          }
+          .flatMap {
+            case Right(configs) =>
+              ResourceFileDescription.fromFilePath(path) match {
+                case Right(desc) =>
+                  for {
+                    checksum <- checksum[F](path, fs)
+                  } yield ResourceFile(
+                    description = desc,
+                    checksum = checksum,
+                    configs = configs,
+                  ).asRight[String]
+                case Left(err) => err.asLeft[ResourceFile].pure[F]
+              }
+
+            case Left(err) => err.asLeft[ResourceFile].pure[F]
+          }
       }
 
   // implementation of checksum from Flyway
@@ -354,5 +381,4 @@ object Dumbo extends internal.DumboPlatform {
              .compile
              .drain
     } yield crc32.getValue().toInt
-
 }

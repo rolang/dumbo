@@ -187,7 +187,9 @@ object Query {
                 }
 
             case EmptyQueryResponse =>
-              finishUp(command) *> new EmptyStatementException(command).raiseError[F, Completion]
+              // we don't care about empty query results
+              // need to find a better way...
+              finishUp(command).as(Completion.Multiple(Nil))
 
             case ErrorResponse(e) =>
               for {
@@ -206,9 +208,9 @@ object Query {
                        .raiseError[F, Completion]
               } yield c
 
-            // If we get rows back it means this should have been a query!
-            case RowDescription(_) =>
-              finishUp(command) *> UnexpectedDataException(command).raiseError[F, Completion]
+            // we want to allow to run queries as Flyway does (for whatever reasons) and going to discard instead of failing
+            // need to find a better way...
+            case RowDescription(_) => discard(command).as(Completion.Multiple(Nil))
 
             // We don't support COPY FROM STDIN yet but we do need to be able to clean up if a user
             // tries it.
