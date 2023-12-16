@@ -8,9 +8,9 @@
 Simple database migration tool for Scala + Postgres with [skunk](https://typelevel.org/skunk/) that can be deployed on JVM and Native.  
 Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway compatible history state to allow you to switch to Flyway if necessary.
 
-Currently supports:
+## Currently supports:
 
-- Versioned Migrations as specified by Flyway:  
+### Versioned Migrations as specified by Flyway  
   ![Versioned Migrations](./docs/assets/versioned_migrations.png)
 
 Each versioned migration must be assigned a unique version.  
@@ -24,6 +24,32 @@ Each versioned migration must be assigned a unique version.
 - 20130115113556
 - 2013.1.15.11.35.56
 - 2013.01.15.11.35.56
+
+### Script Config Files
+Similar to [Flyway script config files](https://documentation.red-gate.com/flyway/flyway-cli-and-api/configuration/script-config-files) it's possible to configure migrations on a per-script basis.  
+
+This is achieved by creating a script configuration file in the same folder as the migration.  
+The script configuration file name must match the migration file name, with the `.conf` suffix added.  
+
+For example a migration file `db/V1__my_script.sql` would have a script configuration file `db/V1__my_script.sql.conf`.
+
+#### Structure
+
+Script config files have the following structure:
+```
+key=value
+```
+
+#### Reference
+
+- **executeInTransaction**  
+  Manually determine whether or not to execute this migration in a transaction. 
+
+  This is useful where certain statements can only execute outside a transaction (like `CREATE INDEX CONCURRENTLY` etc.)  
+  Example:
+  ```
+  executeInTransaction=false
+  ```
 
 ## Usage example
 

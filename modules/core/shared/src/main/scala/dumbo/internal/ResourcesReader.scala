@@ -16,6 +16,8 @@ private[dumbo] trait ResourceReader[F[_]] {
   def readUtf8(path: Path): fs2.Stream[F, String]
 
   def readUtf8Lines(path: Path): fs2.Stream[F, String]
+
+  def exists(path: Path): F[Boolean]
 }
 
 private[dumbo] object ResourceReader {
@@ -33,6 +35,8 @@ private[dumbo] object ResourceReader {
 
       override def readUtf8(path: Path): Stream[F, String] =
         Fs2Files[F].readAll(absolutePath(path), 64 * 2048, Flags.Read).through(fs2.text.utf8.decode)
+
+      override def exists(path: Path): F[Boolean] = Fs2Files[F].exists(absolutePath(path))
     }
   }
 
@@ -50,5 +54,7 @@ private[dumbo] object ResourceReader {
             closeAfterUse = true,
           )
           .through(fs2.text.utf8.decode)
+
+      override def exists(path: Path): F[Boolean] = Sync[F].delay(getClass().getResourceAsStream(path.toString) != null)
     }
 }

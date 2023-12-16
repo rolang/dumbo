@@ -10,11 +10,13 @@ import scala.annotation.tailrec
 import scala.util.{Success, Try}
 
 import cats.data.NonEmptyList
+import cats.implicits.*
 import fs2.io.file.Path
 
 final case class ResourceFile(
   description: ResourceFileDescription,
   checksum: Int,
+  configs: Set[ResourceFileConfig],
 ) extends Ordered[ResourceFile] {
   def versionRaw: String           = description.version.raw
   def version: ResourceFileVersion = description.version
@@ -29,6 +31,48 @@ final case class ResourceFile(
     case s: ResourceFile => version.equals(s.version)
     case _               => false
   }
+
+  def executeInTransaction: Boolean =
+    configs.collectFirst { case ResourceFileConfig.ExecuteInTransaction(v) => v }.getOrElse(true)
+}
+
+sealed abstract class ResourceFileConfig(protected val key: String) {
+  override def hashCode(): Int = key.hashCode()
+
+  override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
+    case s: ResourceFileConfig => s.key == key
+    case _                     => false
+  }
+}
+
+object ResourceFileConfig {
+  final case class ExecuteInTransaction(value: Boolean) extends ResourceFileConfig(txn)
+
+  private val txn = "executeInTransaction"
+
+  private def invalidBoolean(key: String, v: String) =
+    s"Invalid value for $key (should be either true or false): $v".asLeft[List[ResourceFileConfig]]
+
+  private def unknownProperty(key: String) =
+    s"Unknown configuration property: $key".asLeft[List[ResourceFileConfig]]
+
+  def fromLines(lines: List[String]): Either[String, Set[ResourceFileConfig]] =
+    (lines
+      .filter(_.trim().nonEmpty)
+      .map(_.split("=").map(_.trim()).toList)
+      .flatTraverse {
+        case `txn` :: "false" :: Nil => List(ExecuteInTransaction(false)).asRight[String]
+        case `txn` :: "true" :: Nil  => List(ExecuteInTransaction(true)).asRight[String]
+        case `txn` :: v              => invalidBoolean(txn, v.mkString("="))
+        case unknown :: _            => unknownProperty(unknown)
+        case Nil                     => Nil.asRight[String]
+      })
+      .flatMap { l =>
+        l.diff(l.distinct) match {
+          case x :: _ => Left(s"""Multiple configurations for "${x.key}"""")
+          case Nil    => Right(l.toSet)
+        }
+      }
 }
 
 final case class ResourceFileDescription(
