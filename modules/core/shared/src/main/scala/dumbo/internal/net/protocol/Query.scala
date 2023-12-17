@@ -31,66 +31,36 @@ private[dumbo] object Query {
         case _                  => false
       }.void
 
-      def finishUp(stmt: Statement[?]): F[Unit] =
-        flatExpect {
-          case ReadyForQuery(_) => ().pure[F]
-
-          case RowDescription(_) | RowData(_) | CommandComplete(_) | ErrorResponse(_) | EmptyQueryResponse =>
-            finishUp(stmt)
-
-          case CopyInResponse(_) =>
-            send(CopyFail) *>
-              expect { case ErrorResponse(_) => } *>
-              finishUp(stmt)
-
-          case CopyOutResponse(_) =>
-            finishCopyOut *> finishUp(stmt)
-        }
-
+      // discard messages until ReadyForQuery, fail on ErrorResponse/CopyInResponse/CopyOutResponse
       def discard(stmt: Statement[?]): F[Unit] = flatExpect {
-        case RowData(_)         => discard(stmt)
-        case CommandComplete(_) => finishUp(stmt).void
+        case ReadyForQuery(_) => ().pure[F]
+
+        case ErrorResponse(e) =>
+          discard(stmt) *> history(Int.MaxValue).flatMap(hi =>
+            new PostgresErrorException(
+              sql = stmt.sql,
+              sqlOrigin = Some(stmt.origin),
+              info = e,
+              history = hi,
+            ).raiseError[F, Unit]
+          )
+
+        // We don't support COPY FROM STDIN yet but we do need to be able to clean up if a user
+        // tries it.
+        case CopyInResponse(_) =>
+          send(CopyFail) *>
+            expect { case ErrorResponse(_) => } *>
+            discard(stmt) *> new CopyNotSupportedException(stmt).raiseError[F, Unit]
+
+        case CopyOutResponse(_) =>
+          finishCopyOut *> discard(stmt) *>
+            new CopyNotSupportedException(stmt).raiseError[F, Unit]
+
+        case _ => discard(stmt)
       }
 
       override def apply(command: Statement[Void]): F[Unit] = exchange("query") {
-        Trace[F].put("command.sql" -> command.sql) *> send(QueryMessage(command.sql)) *> flatExpect {
-
-          case CommandComplete(_) => finishUp(command).void
-
-          case EmptyQueryResponse => finishUp(command).void
-
-          case ErrorResponse(e) =>
-            for {
-              _ <- finishUp(command)
-              h <- history(Int.MaxValue)
-              c <-
-                new PostgresErrorException(command.sql, Some(command.origin), e, h, Nil, None).raiseError[F, Unit]
-            } yield c
-
-          case NoticeResponse(e) =>
-            for {
-              _ <- expect { case CommandComplete(_) => }
-              _ <- finishUp(command)
-              h <- history(Int.MaxValue)
-              _ <- new PostgresErrorException(command.sql, Some(command.origin), e, h, Nil, None).raiseError[F, Unit]
-            } yield ()
-
-          // we want to allow to run queries as Flyway does (for whatever reasons) and going to discard
-          case RowDescription(_) => discard(command)
-
-          // We don't support COPY FROM STDIN yet but we do need to be able to clean up if a user
-          // tries it.
-          case CopyInResponse(_) =>
-            send(CopyFail) *>
-              expect { case ErrorResponse(_) => } *>
-              finishUp(command) *>
-              new CopyNotSupportedException(command).raiseError[F, Unit]
-
-          case CopyOutResponse(_) =>
-            finishCopyOut *>
-              finishUp(command) *>
-              new CopyNotSupportedException(command).raiseError[F, Unit]
-        }
+        Trace[F].put("command.sql" -> command.sql) *> send(QueryMessage(command.sql)) *> discard(command)
       }
 
     }

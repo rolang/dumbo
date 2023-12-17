@@ -1,0 +1,2 @@
+CREATE TABLE test (id VARCHAR);
+COPY test FROM STDIN;
