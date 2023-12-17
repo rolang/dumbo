@@ -84,7 +84,7 @@ lazy val commonSettings = List(
   },
   Compile / scalacOptions ++= {
     if (scalaVersion.value == `scala-3`)
-      Seq("-source:future", "-language:adhocExtensions")
+      Seq("-source:future")
     else
       Seq("-Xsource:3")
   },
@@ -161,6 +161,7 @@ lazy val example = project
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
-    publish / skip := true,
+    Compile / run / fork := true,
+    publish / skip       := true,
     scalacOptions -= "-Xfatal-warnings",
   )

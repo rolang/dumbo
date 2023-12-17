@@ -3,19 +3,20 @@
 // For more information see LICENSE or https://opensource.org/licenses/MIT
 
 import cats.effect.{IO, IOApp}
-import dumbo.Dumbo
+import dumbo.{ConnectionConfig, Dumbo}
 import natchez.Trace.Implicits.noop
 
 object ExampleApp extends IOApp.Simple {
   override def run: IO[Unit] = Dumbo
     .withResourcesIn[IO]("db/migration")
     .apply(
-      sessionResource = skunk.Session.single[IO](
+      connection = ConnectionConfig(
         host = "localhost",
         port = 5432,
         user = "postgres",
         database = "postgres",
         password = Some("postgres"),
+        ssl = skunk.SSL.None, // skunk.SSL config, default is skunk.SSL.None
       ),
       defaultSchema = "dumbo",
     )
