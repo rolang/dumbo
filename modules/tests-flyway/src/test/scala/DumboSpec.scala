@@ -204,4 +204,18 @@ class DumboSpec extends ffstest.FTest {
       _             = assertEqualHistory(flywayHistory, dumboHistory)
     } yield ()
   }
+
+  dbTest("Same behavior on copy") {
+    val path: Path    = Path("db/test_copy_to")
+    val withResources = dumboWithResources("db/test_copy_to")
+    val schema        = "public"
+
+    for {
+      flywayRes <- flywayMigrate(schema, path).attempt
+      _          = assert(flywayRes.isLeft)
+      _         <- dropSchemas
+      dumboRes  <- dumboMigrate(schema, withResources).attempt
+      _          = assert(dumboRes.left.exists(_.isInstanceOf[skunk.exception.CopyNotSupportedException]))
+    } yield ()
+  }
 }

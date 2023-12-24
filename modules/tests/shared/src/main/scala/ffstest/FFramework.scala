@@ -10,7 +10,7 @@ import cats.data.ValidatedNec
 import cats.effect.{IO, Resource, std}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
-import dumbo.{Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
+import dumbo.{ConnectionConfig, Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
 import natchez.Trace.Implicits.noop
 import skunk.Session
@@ -21,13 +21,21 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
+  lazy val connectionConfig: ConnectionConfig = ConnectionConfig(
+    host = "localhost",
+    port = postgresPort,
+    user = "postgres",
+    database = "postgres",
+    password = Some("postgres"),
+  )
+
   def session: Resource[IO, Session[IO]] = Session
     .single[IO](
-      host = "localhost",
-      port = postgresPort,
-      user = "postgres",
-      database = "postgres",
-      password = Some("postgres"),
+      host = connectionConfig.host,
+      port = connectionConfig.port,
+      user = connectionConfig.user,
+      database = connectionConfig.database,
+      password = connectionConfig.password,
     )
 
   def loadHistory(schema: String, tableName: String = "flyway_schema_history"): IO[List[HistoryEntry]] =
@@ -43,7 +51,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
   )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
     (if (logMigrationStateAfter.isFinite) {
        withResources.withMigrationStateLogAfter(FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
-         sessionResource = session,
+         connection = connectionConfig,
          defaultSchema = defaultSchema,
          schemas = schemas.toSet,
          schemaHistoryTable = schemaHistoryTable,
@@ -51,7 +59,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
        )
      } else {
        withResources.apply(
-         sessionResource = session,
+         connection = connectionConfig,
          defaultSchema = defaultSchema,
          schemas = schemas.toSet,
          schemaHistoryTable = schemaHistoryTable,
@@ -65,7 +73,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     schemas: List[String] = Nil,
   ): IO[ValidatedNec[DumboValidationException, Unit]] =
     withResources(
-      sessionResource = session,
+      connection = connectionConfig,
       defaultSchema = defaultSchema,
       schemas = schemas.toSet,
     ).runValidationWithHistory

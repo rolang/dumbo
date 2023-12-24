@@ -115,6 +115,17 @@ class DumboSpec extends ffstest.FTest {
     } yield ()
   }
 
+  dbTest("Fail with CopyNotSupportedException") {
+    val schema = "public"
+
+    for {
+      dumboResA <- dumboMigrate(schema, dumboWithResources("db/test_copy_from")).attempt
+      _          = assert(dumboResA.left.exists(_.isInstanceOf[skunk.exception.CopyNotSupportedException]))
+      dumboResB <- dumboMigrate(schema, dumboWithResources("db/test_copy_to")).attempt
+      _          = assert(dumboResB.left.exists(_.isInstanceOf[skunk.exception.CopyNotSupportedException]))
+    } yield ()
+  }
+
   test("list migration files from resources") {
     for {
       files <- dumboWithResources("db/test_1").listMigrationFiles

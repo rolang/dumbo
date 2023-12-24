@@ -72,19 +72,20 @@ The migration can be executed like:
 
 ```scala
 import cats.effect.{IO, IOApp}
-import dumbo.Dumbo
+import dumbo.{ConnectionConfig, Dumbo}
 import natchez.Trace.Implicits.noop
 
 object ExampleApp extends IOApp.Simple {
   override def run: IO[Unit] = Dumbo
     .withResourcesIn[IO]("db/migration")
     .apply(
-      sessionResource = skunk.Session.single[IO](
+      connection = ConnectionConfig(
         host = "localhost",
         port = 5432,
         user = "postgres",
         database = "postgres",
         password = Some("postgres"),
+        ssl = skunk.SSL.None, // skunk.SSL config, default is skunk.SSL.None
       ),
       defaultSchema = "public",
     )
@@ -93,7 +94,6 @@ object ExampleApp extends IOApp.Simple {
       IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
     }
 }
-
 ```
 
 To run the example locally with docker and sbt, start a Postgres docker container:
@@ -146,8 +146,15 @@ val dumboWithResouces = Dumbo.withFilesIn[IO](
 
 ```scala
 dumboWithResouces.apply(
-  // skunk session resource
-  sessionResource: Resource[F, Session[F]],
+  // connection config
+  connection: dumbo.ConnectionConfig = dumbo.ConnectionConfig(
+    host = "localhost",
+    port = 5432,
+    user = "postgres",
+    database = "postgres",
+    password = Some("postgres"),
+    ssl = skunk.SSL.None, // skunk.SSL config, default is skunk.SSL.None
+  ),
 
   // default schema (the history state is going to be stored under that schema)
   defaultSchema: String = "public",
