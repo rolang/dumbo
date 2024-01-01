@@ -275,14 +275,13 @@ class Dumbo[F[_]: Sync: Console](
                                               .map(Dumbo.MigrationResult(_))
                        } yield migrationResult
 
-    _ <- migrationResult.migrations.map(_.installedRank).sorted(Ordering[Int].reverse).headOption match {
-           case None =>
-             Console[F]
-               .println(s"Schema ${defaultSchema} is up to date. No migration necessary")
+    _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse).headOption match {
+           case None => Console[F].println(s"Schema ${defaultSchema} is up to date. No migration necessary")
            case Some(latestInstalled) =>
+             val version = latestInstalled.version.getOrElse(latestInstalled.description)
              Console[F]
                .println(
-                 s"Successfully applied ${migrationResult.migrations.length} migrations, now at version ${latestInstalled}"
+                 s"Successfully applied ${migrationResult.migrations.length} migrations, now at version $version"
                )
          }
   } yield migrationResult

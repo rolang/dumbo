@@ -96,6 +96,13 @@ lazy val root = tlCrossRootProject
   .settings(commonSettings)
 
 lazy val skunkVersion = "0.6.2"
+
+lazy val epollcatVersion = "0.1.6"
+
+lazy val munitVersion = "1.0.0-M10"
+
+lazy val munitCEVersion = "2.0.0-M4"
+
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .enablePlugins(AutomateHeaderPlugin)
@@ -105,8 +112,39 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
+    Compile / sourceGenerators += Def.task {
+      val file     = (Compile / sourceManaged).value / "dumbo" / "version.scala"
+      val contents = version.value
+      IO.write(
+        file,
+        s"""|package dumbo
+            |object version { val value: String = "$contents" }""".stripMargin,
+      )
+      Seq(file)
+    }.taskValue,
   )
   .settings(commonSettings)
+
+import scala.scalanative.build._
+lazy val cli = crossProject(JVMPlatform, NativePlatform)
+  .crossType(CrossType.Full)
+  .enablePlugins(AutomateHeaderPlugin)
+  .in(file("modules/cli"))
+  .dependsOn(core)
+  .settings(
+    scalaVersion := `scala-3`,
+    name         := "dumbo-cli",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % munitVersion % Test
+    ),
+  )
+  .settings(commonSettings)
+  .nativeSettings(
+    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
+    nativeConfig ~= {
+      _.withLTO(LTO.thin).withMode(Mode.releaseFull)
+    },
+  )
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
@@ -118,8 +156,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     publish / skip := true,
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit"             % "1.0.0-M10",
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4",
+      "org.scalameta" %%% "munit"             % munitVersion,
+      "org.typelevel" %%% "munit-cats-effect" % munitCEVersion,
     ),
     testFrameworks += new TestFramework("munit.Framework"),
     testOptions += {
@@ -129,7 +167,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.6",
+    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     scalaVersion := `scala-3`,
     nativeConfig ~= {
