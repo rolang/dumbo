@@ -2,6 +2,6 @@
 // This software is licensed under the MIT License (MIT).
 // For more information see LICENSE or https://opensource.org/licenses/MIT
 
-package dumbo.cli
+package dumbo.internal
 
-trait PlatformApp extends epollcat.EpollApp {}
+private[dumbo] trait PlatformApp extends cats.effect.IOApp {}

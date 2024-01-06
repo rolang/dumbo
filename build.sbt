@@ -47,6 +47,12 @@ ThisBuild / githubWorkflowBuild := {
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
 
+ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
+  commands = List("sbt -DreleaseFull=false cliNative/nativeLink"),
+  name = Some("Generate native binary for CLI"),
+  cond = Some("matrix.project == 'rootNative'"),
+)
+
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
   name = Some("Run example (covers reading resources from a jar)"),
@@ -92,7 +98,7 @@ lazy val commonSettings = List(
 
 lazy val root = tlCrossRootProject
   .settings(name := "dumbo")
-  .aggregate(core, tests, testsFlyway, example)
+  .aggregate(core, cli, tests, testsFlyway, example)
   .settings(commonSettings)
 
 lazy val skunkVersion = "0.6.2"
@@ -126,7 +132,7 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
   .settings(commonSettings)
 
 import scala.scalanative.build._
-lazy val cli = crossProject(JVMPlatform, NativePlatform)
+lazy val cli = crossProject(NativePlatform)
   .crossType(CrossType.Full)
   .enablePlugins(AutomateHeaderPlugin)
   .in(file("modules/cli"))
@@ -141,8 +147,9 @@ lazy val cli = crossProject(JVMPlatform, NativePlatform)
   .settings(commonSettings)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
-    nativeConfig ~= {
-      _.withLTO(LTO.thin).withMode(Mode.releaseFull)
+    nativeConfig ~= { nc =>
+      val relaseFull = System.getProperty("releaseFull") == "true"
+      if (relaseFull) nc.withLTO(LTO.thin).withMode(Mode.releaseFull) else nc.withMode(Mode.debug)
     },
   )
 

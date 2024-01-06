@@ -11,6 +11,8 @@ import fs2.io.file.{Files as Fs2Files, Flags, Path}
 import fs2.{Stream, text}
 
 private[dumbo] trait ResourceReader[F[_]] {
+  def location: Option[String]
+
   def list: fs2.Stream[F, Path]
 
   def readUtf8(path: Path): fs2.Stream[F, String]
@@ -21,12 +23,13 @@ private[dumbo] trait ResourceReader[F[_]] {
 }
 
 private[dumbo] object ResourceReader {
-  def fileFs[F[_]: Fs2Files](sourceDir: Path, baseDir: Option[Path] = None): ResourceReader[F] = {
-    val base = baseDir.getOrElse(Path.fromNioPath(java.nio.file.Paths.get(new java.io.File("").toURI())))
+  def fileFs[F[_]: Fs2Files](sourceDir: Path): ResourceReader[F] = {
+    val base = Path.fromNioPath(java.nio.file.Paths.get(new java.io.File("").toURI()))
 
     @inline def absolutePath(p: Path) = if (p.isAbsolute) p else base / p
 
     new ResourceReader[F] {
+      override val location: Option[String] = Some(absolutePath(sourceDir).toString)
       override def list: Stream[F, Path] =
         Fs2Files[F].list(absolutePath(sourceDir))
 
@@ -42,6 +45,8 @@ private[dumbo] object ResourceReader {
 
   def embeddedResources[F[_]: Sync](readResources: F[List[ResourceFilePath]]): ResourceReader[F] =
     new ResourceReader[F] {
+      override val location: Option[String] = None
+
       override def list: Stream[F, Path] = Stream.evals(readResources).map(r => Path.fromNioPath(r.toNioPath))
 
       override def readUtf8Lines(path: Path): Stream[F, String] = readUtf8(path).through(text.lines)

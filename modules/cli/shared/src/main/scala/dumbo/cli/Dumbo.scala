@@ -12,13 +12,14 @@ import cats.effect.std.Console
 import dumbo.exception.DumboValidationException
 import cats.data.Validated.Valid
 import cats.data.Validated.Invalid
+import dumbo.Dumbo.defaults
 
-object Dumbo extends PlatformApp {
+object Dumbo extends dumbo.internal.PlatformApp {
   private def printHelp(cmd: Option[Command] = None) = {
     val tab = "    "
 
-    def helpMap(m: Map[String, String]) = {
-      val colSize = m.keySet.maxBy(_.length()).length() + 3
+    def helpMapStr(m: Map[String, String]) = {
+      val colSize = m.keySet.maxByOption(_.length()).map(_.length()).getOrElse(0) + 3
 
       m.map { case (k, v) => s"${k + Array.fill(colSize - k.length())(" ").mkString}$v" }
         .mkString(tab, s"\n$tab", "\n")
@@ -28,37 +29,46 @@ object Dumbo extends PlatformApp {
       case None =>
         s"""|
             |Dumbo usage example
-            |${tab}dumbo -user=postgres -password=postgres -url=postgresql://localhost:5432/postgres -location=/path/to/db/migration migrate
+            |${tab}dumbo -user=postgres -password="my safe passw0rd" -url=postgresql://localhost:5432/postgres -location=/path/to/db/migration migrate
             |${tab}dumbo help migrate""".stripMargin
       case Some(_) => ""
 
     val commandsHelp = cmd match
-      case None    => s"dumbo help [command]\nCommands\n${helpMap(Command.helpMap)}\n"
+      case None    => s"dumbo help [command]\nCommands\n${helpMapStr(Command.helpMap)}\n"
       case Some(_) => ""
 
+    val configsHelp = {
+      val title = "Configuration parameters (Format: -key=value)"
+
+      cmd match
+        case None                          => Some(s"\n$title\n${helpMapStr(Config.helpMapAll)}")
+        case Some(c) if c.configs.nonEmpty => Some(s"\n$title\n${helpMapStr(Config.helpMap(c.configs))}")
+        case _                             => None
+    }
+
     val help =
-      s"""
-         |Usage
-         |${tab}dumbo [options] ${cmd.flatMap(_.keys.headOption).getOrElse("[command]")}
-         |$commandsHelp
-         |Configuration parameters (Format: -key=value)
-         |
-         |${helpMap(cmd.map(c => Config.helpMap(c.configs)).getOrElse(Config.helpMapAll))}
-         |$usageExample
-    """.stripMargin
+      s"""|Usage
+          |${tab}dumbo ${configsHelp.map(_ => "[options] ").getOrElse("")}${cmd
+           .flatMap(_.keys.headOption)
+           .getOrElse("[command]")}
+          |$commandsHelp${configsHelp.getOrElse("")}$usageExample""".stripMargin
 
     IO.println(help)
   }
 
-  private def dumboFromConfigs(configs: List[(Config[?], String)]): Either[String, dumbo.Dumbo[IO]] = {
+  private[dumbo] def dumboFromConfigs(configs: List[(Config[?], String)]): Either[String, dumbo.Dumbo[IO]] = {
     def collectConfig[T](config: Config[T]): Option[Either[String, T]] =
       configs.collectFirst { case (c, v) if c == config => config.parse(v) }
 
     for {
-      uri      <- collectConfig(Config.Url).toRight("Missing url").flatten
-      database <- uri.getPath().split("/").drop(1).headOption.toRight(s"Missing database in $uri")
-      host      = uri.getHost()
-      port      = Option(uri.getPort()).getOrElse(5432)
+      uri <- collectConfig(Config.Url).toRight("Missing url").flatten
+      _ <- Option(uri.getScheme()) match
+             case None               => Left(s"Missing scheme in $uri")
+             case Some("postgresql") => Right(())
+             case Some(invalid)      => Left(s"Unsupported scheme $invalid")
+      host     <- Option(uri.getHost()).toRight(s"Missing or invalid hostname in $uri")
+      port      = { val p = uri.getPort(); if (p > -1) p else defaults.port }
+      database <- Option(uri.getPath()).flatMap(_.split("/").drop(1).headOption).toRight(s"Missing database in $uri")
       user     <- collectConfig(Config.User).toRight("Missing user").flatten
       password <- collectConfig(Config.Password) match
                     case None            => Right(None)
@@ -84,30 +94,30 @@ object Dumbo extends PlatformApp {
           user = user,
           database = database,
           password = password,
-          ssl = skunk.SSL.None,
+          ssl = ssl,
         ),
-        defaultSchema = schemas.headOption.getOrElse("public"),
+        defaultSchema = schemas.headOption.getOrElse(defaults.defaultSchema),
         schemas = schemas,
-        schemaHistoryTable = table.getOrElse("flyway_schema_history"),
-        validateOnMigrate = validateOnMigrate.getOrElse(true),
+        schemaHistoryTable = table.getOrElse(defaults.schemaHistoryTable),
+        validateOnMigrate = validateOnMigrate.getOrElse(defaults.validateOnMigrate),
       )
 
   }
 
-  private def runMigration(options: List[(Config[?], String)]): IO[Unit] =
+  private def runMigration(options: List[(Config[?], String)]): IO[ExitCode] =
     dumboFromConfigs(options) match
-      case Left(value) => Console[IO].errorln(s"Invalid configuration: $value")
-      case Right(d)    => d.runMigration.void
+      case Left(value) => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
+      case Right(d)    => d.runMigration.as(ExitCode.Success)
 
-  private def runValidation(options: List[(Config[?], String)]): IO[Unit] =
+  private def runValidation(options: List[(Config[?], String)]): IO[ExitCode] =
     dumboFromConfigs(options) match
-      case Left(value) => Console[IO].errorln(s"Invalid configuration: $value")
+      case Left(value) => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
       case Right(d) =>
         d.runValidationWithHistory.flatMap {
-          case Valid(_) => Console[IO].println("Validation result: ok")
+          case Valid(_) => Console[IO].println("Validation result: ok").as(ExitCode.Success)
           case Invalid(e) =>
             val errs = e.toNonEmptyList.toList.map(_.getMessage())
-            Console[IO].errorln(s"Errors on validation: ${errs.mkString("\n", "\n", "")}")
+            Console[IO].errorln(s"Errors on validation: ${errs.mkString("\n", "\n", "")}").as(ExitCode.Success)
         }
 
   def run(args: List[String]): IO[ExitCode] =
@@ -118,8 +128,8 @@ object Dumbo extends PlatformApp {
         argsResult.commands match
           case Nil                        => printHelp().as(ExitCode.Success)
           case Command.Help :: Nil        => printHelp().as(ExitCode.Success)
-          case Command.Migrate :: Nil     => runMigration(argsResult.configs).void.as(ExitCode.Success)
-          case Command.Validate :: Nil    => runValidation(argsResult.configs).void.as(ExitCode.Success)
+          case Command.Migrate :: Nil     => runMigration(argsResult.configs)
+          case Command.Validate :: Nil    => runValidation(argsResult.configs)
           case Command.Version :: Nil     => IO.println(s"Dumbo version ${dumbo.version.value}").as(ExitCode.Success)
           case Command.Help :: cmd :: Nil => printHelp(Some(cmd)).as(ExitCode.Success)
           case multiple =>
