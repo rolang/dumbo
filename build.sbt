@@ -26,9 +26,14 @@ ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(`scala
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
+
+lazy val brewFormulas = Set("s2n", "utf8proc")
+
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List("sudo apt-get update && sudo apt-get install clang libutf8proc-dev -y"),
+    commands = List(
+      s"sudo apt-get update && sudo apt-get install clang && /home/linuxbrew/.linuxbrew/bin/brew install ${brewFormulas.mkString(" ")}"
+    ),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
@@ -46,6 +51,12 @@ ThisBuild / githubWorkflowBuild := {
     cond = Some("(matrix.project == 'rootJVM') && (matrix.scala == '2.13')"),
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
+
+ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
+  commands = List("sbt -DreleaseFull=false cliNative/nativeLink"),
+  name = Some("Generate native binary for CLI"),
+  cond = Some("matrix.project == 'rootNative'"),
+)
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
@@ -92,10 +103,17 @@ lazy val commonSettings = List(
 
 lazy val root = tlCrossRootProject
   .settings(name := "dumbo")
-  .aggregate(core, tests, testsFlyway, example)
+  .aggregate(core, cli, tests, testsFlyway, example)
   .settings(commonSettings)
 
 lazy val skunkVersion = "0.6.2"
+
+lazy val epollcatVersion = "0.1.6"
+
+lazy val munitVersion = "1.0.0-M10"
+
+lazy val munitCEVersion = "2.0.0-M4"
+
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
   .enablePlugins(AutomateHeaderPlugin)
@@ -105,8 +123,42 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
+    Compile / sourceGenerators += Def.task {
+      val file     = (Compile / sourceManaged).value / "dumbo" / "version.scala"
+      val contents = version.value
+      IO.write(
+        file,
+        s"""|package dumbo
+            |object version { val value: String = "$contents" }""".stripMargin,
+      )
+      Seq(file)
+    }.taskValue,
   )
   .settings(commonSettings)
+
+import scala.scalanative.build._
+lazy val cli = crossProject(NativePlatform)
+  .crossType(CrossType.Full)
+  .enablePlugins(AutomateHeaderPlugin)
+  .in(file("modules/cli"))
+  .dependsOn(core)
+  .settings(
+    scalaVersion := `scala-3`,
+    name         := "dumbo-cli",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % munitVersion % Test
+    ),
+  )
+  .settings(commonSettings)
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
+  .nativeSettings(
+    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
+    nativeBrewFormulas ++= brewFormulas,
+    nativeConfig ~= { nc =>
+      val relaseFull = System.getProperty("releaseFull") == "true"
+      if (relaseFull) nc.withLTO(LTO.thin).withMode(Mode.releaseFull) else nc.withMode(Mode.debug)
+    },
+  )
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
@@ -118,8 +170,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     publish / skip := true,
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit"             % "1.0.0-M10",
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4",
+      "org.scalameta" %%% "munit"             % munitVersion,
+      "org.typelevel" %%% "munit-cats-effect" % munitCEVersion,
     ),
     testFrameworks += new TestFramework("munit.Framework"),
     testOptions += {
@@ -128,8 +180,10 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
       } else Tests.Argument()
     },
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.6",
+    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
+    Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     scalaVersion := `scala-3`,
     nativeConfig ~= {

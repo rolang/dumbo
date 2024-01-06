@@ -6,7 +6,7 @@ package dumbo
 
 final case class ConnectionConfig(
   host: String,
-  port: Int = 5432,
+  port: Int = Dumbo.defaults.port,
   user: String,
   database: String,
   password: Option[String] = None,

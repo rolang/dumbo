@@ -20,7 +20,10 @@ final case class HistoryEntry(
   installedOn: LocalDateTime,
   executionTimeMs: Int,
   success: Boolean,
-) {
+) extends Ordered[HistoryEntry] {
+
+  override def compare(that: HistoryEntry): Int = installedRank.compare(that.installedRank)
+
   def sourceFileVersion: Option[ResourceFileVersion] = version.flatMap(ResourceFileVersion.fromString(_).toOption)
 }
 
