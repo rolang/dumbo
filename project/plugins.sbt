@@ -11,3 +11,5 @@ lazy val sbtTlVersion = "0.6.4"
 addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % sbtTlVersion)
 
 addSbtPlugin("org.typelevel" % "sbt-typelevel" % sbtTlVersion)
+
+addSbtPlugin("com.armanbilge" % "sbt-scala-native-config-brew" % "0.2.0-RC1")

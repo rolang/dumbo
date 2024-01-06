@@ -26,9 +26,14 @@ ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(`scala
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
+
+lazy val brewFormulas = Set("s2n", "utf8proc")
+
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List("sudo apt-get update && sudo apt-get install clang libutf8proc-dev -y"),
+    commands = List(
+      s"sudo apt-get update && sudo apt-get install clang && /home/linuxbrew/.linuxbrew/bin/brew install ${brewFormulas.mkString(" ")}"
+    ),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
@@ -145,8 +150,10 @@ lazy val cli = crossProject(NativePlatform)
     ),
   )
   .settings(commonSettings)
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
+    nativeBrewFormulas ++= brewFormulas,
     nativeConfig ~= { nc =>
       val relaseFull = System.getProperty("releaseFull") == "true"
       if (relaseFull) nc.withLTO(LTO.thin).withMode(Mode.releaseFull) else nc.withMode(Mode.debug)
@@ -173,8 +180,10 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
       } else Tests.Argument()
     },
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
+    Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     scalaVersion := `scala-3`,
     nativeConfig ~= {
