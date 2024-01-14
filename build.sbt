@@ -1,3 +1,5 @@
+import scala.scalanative.build.*
+
 lazy val `scala-2.12` = "2.12.18"
 lazy val `scala-2.13` = "2.13.12"
 lazy val `scala-3`    = "3.3.1"
@@ -52,10 +54,23 @@ ThisBuild / githubWorkflowBuild := {
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
 
-ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
-  commands = List("sbt -DreleaseFull=false cliNative/nativeLink"),
+ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
+  commands = List("cliNative/nativeLink"),
   name = Some("Generate native binary for CLI"),
   cond = Some("matrix.project == 'rootNative'"),
+  env = Map(
+    "SCALANATIVE_MODE" -> Mode.releaseFull.toString(),
+    "SCALANATIVE_LTO"  -> LTO.thin.toString(),
+  ),
+)
+
+ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
+  ref = UseRef.Public("softprops", "action-gh-release", "v1"),
+  name = Some("Upload release binaries"),
+  params = Map(
+    "files" -> "modules/cli/native/target/bin/*.zip"
+  ),
+  cond = None,
 )
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
@@ -116,27 +131,25 @@ lazy val munitCEVersion = "2.0.0-M4"
 
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
-  .enablePlugins(AutomateHeaderPlugin)
+  .enablePlugins(AutomateHeaderPlugin, BuildInfoPlugin)
   .in(file("modules/core"))
   .settings(
     name := "dumbo",
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
-    Compile / sourceGenerators += Def.task {
-      val file     = (Compile / sourceManaged).value / "dumbo" / "version.scala"
-      val contents = version.value
-      IO.write(
-        file,
-        s"""|package dumbo
-            |object version { val value: String = "$contents" }""".stripMargin,
-      )
-      Seq(file)
-    }.taskValue,
+    buildInfoPackage := "dumbo",
+    buildInfoKeys := {
+      val isNative = crossProjectPlatform.value.identifier == "native"
+      Seq[BuildInfoKey](
+        version,
+        scalaVersion,
+        scalaBinaryVersion,
+      ) ++ (if (isNative) Seq(BuildInfoKey("scalaNativeVersion" -> nativeVersion)) else Seq())
+    },
   )
   .settings(commonSettings)
 
-import scala.scalanative.build._
 lazy val cli = crossProject(NativePlatform)
   .crossType(CrossType.Full)
   .enablePlugins(AutomateHeaderPlugin)
@@ -154,11 +167,36 @@ lazy val cli = crossProject(NativePlatform)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     nativeBrewFormulas ++= brewFormulas,
-    nativeConfig ~= { nc =>
-      val relaseFull = System.getProperty("releaseFull") == "true"
-      if (relaseFull) nc.withLTO(LTO.thin).withMode(Mode.releaseFull) else nc.withMode(Mode.debug)
-    },
   )
+
+lazy val cliNative      = cli.native
+lazy val buildCliBinary = taskKey[File]("")
+buildCliBinary := {
+  def normalise(s: String) = s.toLowerCase.replaceAll("[^a-z0-9]+", "")
+  val props                = sys.props.toMap
+  val os = normalise(props.getOrElse("os.name", "")) match {
+    case p if p.startsWith("linux")                         => "linux"
+    case p if p.startsWith("windows")                       => "windows"
+    case p if p.startsWith("osx") || p.startsWith("macosx") => "macosx"
+    case _                                                  => "unknown"
+  }
+
+  val arch = (
+    normalise(props.getOrElse("os.arch", "")),
+    props.getOrElse("sun.arch.data.model", "64"),
+  ) match {
+    case ("amd64" | "x64" | "x8664" | "x86", bits) => s"x86_${bits}"
+    case ("aarch64" | "arm64", bits)               => s"aarch$bits"
+    case _                                         => "unknown"
+  }
+
+  val name  = s"dumbo-$arch-$os.zip"
+  val built = (cliNative / Compile / nativeLink).value
+  val dest  = (cliNative / target).value / "bin" / name
+  IO.zip(Seq((built, "dumbo")), dest, None)
+  sLog.value.info(s"Built cli binary in ${dest}")
+  dest
+}
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)

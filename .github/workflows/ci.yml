@@ -111,7 +111,10 @@ jobs:
 
       - name: Generate native binary for CLI
         if: matrix.project == 'rootNative'
-        run: sbt -DreleaseFull=false cliNative/nativeLink
+        env:
+          SCALANATIVE_MODE: release-full
+          SCALANATIVE_LTO: thin
+        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' cliNative/nativeLink
 
       - name: Run example (covers reading resources from a jar)
         if: matrix.project == 'rootJVM'
@@ -239,6 +242,11 @@ jobs:
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
         run: sbt tlCiRelease
+
+      - name: Upload release binaries
+        uses: softprops/action-gh-release@v1
+        with:
+          files: modules/cli/native/target/bin/*.zip
 
   dependency-submission:
     name: Submit Dependencies

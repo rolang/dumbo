@@ -13,6 +13,7 @@ import dumbo.exception.DumboValidationException
 import cats.data.Validated.Valid
 import cats.data.Validated.Invalid
 import dumbo.Dumbo.defaults
+import dumbo.BuildInfo
 
 object Dumbo extends dumbo.internal.PlatformApp {
   private def printHelp(cmd: Option[Command] = None) = {
@@ -126,14 +127,21 @@ object Dumbo extends dumbo.internal.PlatformApp {
     argsResult.unknown match
       case Nil =>
         argsResult.commands match
-          case Nil                        => printHelp().as(ExitCode.Success)
-          case Command.Help :: Nil        => printHelp().as(ExitCode.Success)
-          case Command.Migrate :: Nil     => runMigration(argsResult.configs)
-          case Command.Validate :: Nil    => runValidation(argsResult.configs)
-          case Command.Version :: Nil     => IO.println(s"Dumbo version ${dumbo.version.value}").as(ExitCode.Success)
+          case Nil                     => printHelp().as(ExitCode.Success)
+          case Command.Help :: Nil     => printHelp().as(ExitCode.Success)
+          case Command.Migrate :: Nil  => runMigration(argsResult.configs)
+          case Command.Validate :: Nil => runValidation(argsResult.configs)
+          case Command.Version :: Nil =>
+            IO.println(
+              s"""|Dumbo
+                  |Version: ${BuildInfo.version}
+                  |Built using Scala ${BuildInfo.scalaVersion} and Scala Native ${BuildInfo.scalaNativeVersion}""".stripMargin
+            ).as(ExitCode.Success)
           case Command.Help :: cmd :: Nil => printHelp(Some(cmd)).as(ExitCode.Success)
           case multiple =>
-            Console[IO].errorln(s"Multiple commands given: ${multiple.mkString(", ")}").as(ExitCode.Error)
+            Console[IO]
+              .errorln(s"Multiple commands given: ${multiple.map(_.toString().toLowerCase()).mkString(", ")}")
+              .as(ExitCode.Error)
 
       case unknowns => Console[IO].errorln(s"Invalid arguments: ${unknowns.mkString(", ")}").as(ExitCode.Error)
 }
