@@ -54,9 +54,9 @@ ThisBuild / githubWorkflowBuild := {
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
 
-ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
-  commands = List("buildCliBinary"),
-  name = Some("Generate native binary for CLI"),
+ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
+  commands = List("sbt buildCliBinary"),
+  name = Some("Generate CLI native binary"),
   cond = Some("matrix.project == 'rootNative'"),
   env = Map(
     "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
