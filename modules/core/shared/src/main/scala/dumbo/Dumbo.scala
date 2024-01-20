@@ -267,9 +267,10 @@ class Dumbo[F[_]: Sync: Console](
                                               s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
                                             ).raiseError[F, List[ResourceFile]]
                                         }
-                         _ <- Console[F].println(
-                                s"Found ${sourceFiles.size} versioned migration files"
-                              )
+                         _ <- {
+                           val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
+                           Console[F].println(s"Found ${sourceFiles.size} versioned migration files$inLocation")
+                         }
                          _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
                          migrationResult <- Stream
                                               .unfoldEval(sourceFiles)(migrateToNext(session, resReader))
