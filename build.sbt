@@ -190,7 +190,7 @@ buildCliBinary := {
     case _                                         => "unknown"
   }
 
-  val name    = s"dumbo-$arch-$os"
+  val name    = s"dumbo-cli-$arch-$os"
   val built   = (cliNative / Compile / nativeLink).value
   val destBin = (cliNative / target).value / "bin" / name
   val destZip = (cliNative / target).value / "bin" / s"$name.zip"
