@@ -70,7 +70,7 @@ ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
   params = Map(
     "files" -> "modules/cli/native/target/bin/*"
   ),
-  cond = None,
+  cond = Some("startsWith(github.ref, 'refs/tags/')"),
 )
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
