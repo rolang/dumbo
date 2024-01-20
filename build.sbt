@@ -55,11 +55,11 @@ ThisBuild / githubWorkflowBuild := {
 }
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
-  commands = List("cliNative/nativeLink"),
+  commands = List("buildCliBinary"),
   name = Some("Generate native binary for CLI"),
   cond = Some("matrix.project == 'rootNative'"),
   env = Map(
-    "SCALANATIVE_MODE" -> Mode.releaseFull.toString(),
+    "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
     "SCALANATIVE_LTO"  -> LTO.thin.toString(),
   ),
 )
@@ -68,7 +68,7 @@ ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
   ref = UseRef.Public("softprops", "action-gh-release", "v1"),
   name = Some("Upload release binaries"),
   params = Map(
-    "files" -> "modules/cli/native/target/bin/*.zip"
+    "files" -> "modules/cli/native/target/bin/*"
   ),
   cond = None,
 )
@@ -190,12 +190,18 @@ buildCliBinary := {
     case _                                         => "unknown"
   }
 
-  val name  = s"dumbo-$arch-$os.zip"
-  val built = (cliNative / Compile / nativeLink).value
-  val dest  = (cliNative / target).value / "bin" / name
-  IO.zip(Seq((built, "dumbo")), dest, None)
-  sLog.value.info(s"Built cli binary in ${dest}")
-  dest
+  val name    = s"dumbo-$arch-$os"
+  val built   = (cliNative / Compile / nativeLink).value
+  val destBin = (cliNative / target).value / "bin" / name
+  val destZip = (cliNative / target).value / "bin" / s"$name.zip"
+
+  IO.copyFile(built, destBin)
+  sLog.value.info(s"Built cli binary in $destBin")
+
+  IO.zip(Seq((built, "dumbo")), destZip, None)
+  sLog.value.info(s"Built cli binary zip in $destZip")
+
+  destBin
 }
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)

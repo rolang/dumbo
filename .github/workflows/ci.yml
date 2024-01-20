@@ -112,9 +112,9 @@ jobs:
       - name: Generate native binary for CLI
         if: matrix.project == 'rootNative'
         env:
-          SCALANATIVE_MODE: release-full
+          SCALANATIVE_MODE: release-fast
           SCALANATIVE_LTO: thin
-        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' cliNative/nativeLink
+        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' buildCliBinary
 
       - name: Run example (covers reading resources from a jar)
         if: matrix.project == 'rootJVM'
@@ -246,7 +246,7 @@ jobs:
       - name: Upload release binaries
         uses: softprops/action-gh-release@v1
         with:
-          files: modules/cli/native/target/bin/*.zip
+          files: modules/cli/native/target/bin/*
 
   dependency-submission:
     name: Submit Dependencies
