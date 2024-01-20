@@ -8,8 +8,11 @@ import cats.effect.Sync
 import dumbo.{DumboWithResourcesPartiallyApplied, ResourceFilePath}
 
 private[dumbo] trait DumboPlatform {
-  def withResourcesIn[F[_]: Sync](location: String): DumboWithResourcesPartiallyApplied[F] =
+  def withResourcesIn[F[_]: Sync](location: String): DumboWithResourcesPartiallyApplied[F] = {
+    val (locationInfo, resources) = ResourceFilePath.fromResourcesDir(location)
+
     new DumboWithResourcesPartiallyApplied[F](
-      ResourceReader.embeddedResources(ResourceFilePath.fromResourcesDir(location))
+      ResourceReader.embeddedResources(resources, Some(locationInfo))
     )
+  }
 }

@@ -10,6 +10,7 @@ import java.nio.file.{Path, Paths}
 import java.util.zip.ZipFile
 
 import scala.jdk.CollectionConverters.*
+import scala.util.{Failure, Success, Try}
 
 import cats.effect.Resource
 import cats.effect.kernel.Sync
@@ -21,23 +22,31 @@ final case class ResourceFilePath(value: String) extends AnyVal {
 }
 
 object ResourceFilePath {
-  def fromResourcesDir[F[_]: Sync](location: String): F[List[ResourceFilePath]] =
-    Sync[F].delay(getClass().getClassLoader().getResources(location).asScala.toList).flatMap {
-      case url :: Nil if url.toString.startsWith("jar:") => listInJar(url.toURI(), location)
-      case url :: Nil =>
-        Sync[F].delay {
-          val base = Paths.get(url.toURI())
-          val resources =
-            new File(base.toString()).list().map(fileName => apply(Paths.get("/", location, fileName))).toList
-          resources
-        }
-      case Nil => Sync[F].raiseError(new ResourcesLocationNotFund(s"resource ${location} was not found"))
-      case multiple =>
-        Sync[F].raiseError(
-          new MultipleResoucesException(
-            s"found multiple resource locations for ${location} in:\n${multiple.mkString("\n")}"
-          )
+  private[dumbo] def fromResourcesDir[F[_]: Sync](location: String): (String, F[List[ResourceFilePath]]) =
+    Try(getClass().getClassLoader().getResources(location).asScala.toList) match {
+      case Failure(err)                                           => ("", Sync[F].raiseError(err))
+      case Success(Nil)                                           => ("", Sync[F].raiseError(new ResourcesLocationNotFund(s"resource ${location} was not found")))
+      case Success(url :: Nil) if url.toString.startsWith("jar:") => (url.toString, listInJar(url.toURI(), location))
+      case Success(url :: Nil) =>
+        (
+          url.toString,
+          Sync[F].delay {
+            val base = Paths.get(url.toURI())
+            val resources =
+              new File(base.toString()).list().map(fileName => apply(Paths.get("/", location, fileName))).toList
+            resources
+          },
         )
+      case Success(multiple) =>
+        (
+          "",
+          Sync[F].raiseError(
+            new MultipleResoucesException(
+              s"found multiple resource locations for ${location} in:\n${multiple.mkString("\n")}"
+            )
+          ),
+        )
+
     }
 
   def apply(p: Path): ResourceFilePath = ResourceFilePath(p.toString())

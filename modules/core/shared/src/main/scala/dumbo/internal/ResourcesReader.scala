@@ -43,9 +43,12 @@ private[dumbo] object ResourceReader {
     }
   }
 
-  def embeddedResources[F[_]: Sync](readResources: F[List[ResourceFilePath]]): ResourceReader[F] =
+  def embeddedResources[F[_]: Sync](
+    readResources: F[List[ResourceFilePath]],
+    locationInfo: Option[String] = None,
+  ): ResourceReader[F] =
     new ResourceReader[F] {
-      override val location: Option[String] = None
+      override val location: Option[String] = locationInfo
 
       override def list: Stream[F, Path] = Stream.evals(readResources).map(r => Path.fromNioPath(r.toNioPath))
 
