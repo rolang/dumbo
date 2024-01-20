@@ -10,7 +10,7 @@ import java.util.zip.CRC32
 import scala.concurrent.duration.*
 
 import cats.data.Validated.{Invalid, Valid}
-import cats.data.{NonEmptyChain, NonEmptyList, ValidatedNec}
+import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.effect.kernel.Clock
 import cats.effect.std.Console
 import cats.effect.{Async, Resource, Sync, Temporal}
@@ -30,14 +30,15 @@ import skunk.{Session as SkunkSession, *}
 final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) {
   def apply(
     connection: ConnectionConfig,
-    defaultSchema: String = "public",
-    schemas: Set[String] = Set.empty[String],
-    schemaHistoryTable: String = "flyway_schema_history",
-    validateOnMigrate: Boolean = true,
+    defaultSchema: String = Dumbo.defaults.defaultSchema,
+    schemas: Set[String] = Dumbo.defaults.schemas,
+    schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
+    validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
   )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Trace[F], N: Network[F]) =
     new Dumbo[F](
       resReader = reader,
       sessionResource = toSessionResource(connection, defaultSchema, schemas),
+      connection = connection,
       defaultSchema = defaultSchema,
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
@@ -46,10 +47,10 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
 
   def withMigrationStateLogAfter(logMigrationStateAfter: FiniteDuration)(
     connection: ConnectionConfig,
-    defaultSchema: String = "public",
-    schemas: Set[String] = Set.empty[String],
-    schemaHistoryTable: String = "flyway_schema_history",
-    validateOnMigrate: Boolean = true,
+    defaultSchema: String = Dumbo.defaults.defaultSchema,
+    schemas: Set[String] = Dumbo.defaults.schemas,
+    schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
+    validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
   )(implicit A: Async[F], C: Console[F], TRC: Trace[F]): Dumbo[F] = {
     implicit val network: Network[F] = Network.forAsync(A)
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
@@ -57,6 +58,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     new Dumbo[F](
       resReader = reader,
       sessionResource = sessionResource,
+      connection = connection,
       defaultSchema = defaultSchema,
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
@@ -123,19 +125,20 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
 }
 
 class Dumbo[F[_]: Sync: Console](
-  resReader: ResourceReader[F],
+  private[dumbo] val resReader: ResourceReader[F],
   sessionResource: Resource[F, DumboSession[F]],
-  defaultSchema: String = "public",
-  schemas: Set[String] = Set.empty,
-  schemaHistoryTable: String = "flyway_schema_history",
-  validateOnMigrate: Boolean = true, // validate applied migrations against the available ones
+  private[dumbo] val connection: ConnectionConfig,
+  defaultSchema: String,
+  schemas: Set[String],
+  schemaHistoryTable: String,
+  private[dumbo] val validateOnMigrate: Boolean,
   progressMonitor: Resource[F, Unit] = Resource.unit[F],
 ) {
   import Dumbo.*
 
-  private val allSchemas   = NonEmptyList.of(defaultSchema, schemas.toList*)
-  private val historyTable = s"${defaultSchema}.${schemaHistoryTable}"
-  private val dumboHistory = History(historyTable)
+  private[dumbo] val allSchemas   = Set(defaultSchema) ++ schemas
+  private[dumbo] val historyTable = s"${defaultSchema}.${schemaHistoryTable}"
+  private val dumboHistory        = History(historyTable)
 
   private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${schema}".command
 
@@ -264,9 +267,10 @@ class Dumbo[F[_]: Sync: Console](
                                               s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
                                             ).raiseError[F, List[ResourceFile]]
                                         }
-                         _ <- Console[F].println(
-                                s"Found ${sourceFiles.size} versioned migration files"
-                              )
+                         _ <- {
+                           val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
+                           Console[F].println(s"Found ${sourceFiles.size} versioned migration files$inLocation")
+                         }
                          _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
                          migrationResult <- Stream
                                               .unfoldEval(sourceFiles)(migrateToNext(session, resReader))
@@ -275,14 +279,13 @@ class Dumbo[F[_]: Sync: Console](
                                               .map(Dumbo.MigrationResult(_))
                        } yield migrationResult
 
-    _ <- migrationResult.migrations.map(_.installedRank).sorted(Ordering[Int].reverse).headOption match {
-           case None =>
-             Console[F]
-               .println(s"Schema ${defaultSchema} is up to date. No migration necessary")
+    _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse).headOption match {
+           case None => Console[F].println(s"Schema ${defaultSchema} is up to date. No migration necessary")
            case Some(latestInstalled) =>
+             val version = latestInstalled.version.getOrElse(latestInstalled.description)
              Console[F]
                .println(
-                 s"Successfully applied ${migrationResult.migrations.length} migrations, now at version ${latestInstalled}"
+                 s"Successfully applied ${migrationResult.migrations.length} migrations, now at version $version"
                )
          }
   } yield migrationResult
@@ -333,6 +336,15 @@ class Dumbo[F[_]: Sync: Console](
 }
 
 object Dumbo extends internal.DumboPlatform {
+
+  object defaults {
+    val defaultSchema: String      = "public"
+    val schemas: Set[String]       = Set.empty[String]
+    val schemaHistoryTable: String = "flyway_schema_history"
+    val validateOnMigrate: Boolean = true
+    val port: Int                  = 5432
+  }
+
   final case class MigrationResult(migrations: List[HistoryEntry]) {
     val migrationsExecuted: Int = migrations.length
   }

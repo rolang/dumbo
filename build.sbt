@@ -1,3 +1,5 @@
+import scala.scalanative.build.*
+
 lazy val `scala-2.12` = "2.12.18"
 lazy val `scala-2.13` = "2.13.12"
 lazy val `scala-3`    = "3.3.1"
@@ -26,9 +28,14 @@ ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(`scala
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
+
+lazy val brewFormulas = Set("s2n", "utf8proc")
+
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List("sudo apt-get update && sudo apt-get install clang libutf8proc-dev -y"),
+    commands = List(
+      s"sudo apt-get update && sudo apt-get install clang && /home/linuxbrew/.linuxbrew/bin/brew install ${brewFormulas.mkString(" ")}"
+    ),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
@@ -46,6 +53,25 @@ ThisBuild / githubWorkflowBuild := {
     cond = Some("(matrix.project == 'rootJVM') && (matrix.scala == '2.13')"),
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
+
+ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
+  commands = List("sbt buildCliBinary"),
+  name = Some("Generate CLI native binary"),
+  cond = Some("matrix.project == 'rootNative'"),
+  env = Map(
+    "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
+    "SCALANATIVE_LTO"  -> LTO.thin.toString(),
+  ),
+)
+
+ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
+  ref = UseRef.Public("softprops", "action-gh-release", "v1"),
+  name = Some("Upload release binaries"),
+  params = Map(
+    "files" -> "modules/cli/native/target/bin/*"
+  ),
+  cond = None,
+)
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
@@ -92,21 +118,91 @@ lazy val commonSettings = List(
 
 lazy val root = tlCrossRootProject
   .settings(name := "dumbo")
-  .aggregate(core, tests, testsFlyway, example)
+  .aggregate(core, cli, tests, testsFlyway, example)
   .settings(commonSettings)
 
 lazy val skunkVersion = "0.6.2"
+
+lazy val epollcatVersion = "0.1.6"
+
+lazy val munitVersion = "1.0.0-M10"
+
+lazy val munitCEVersion = "2.0.0-M4"
+
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
-  .enablePlugins(AutomateHeaderPlugin)
+  .enablePlugins(AutomateHeaderPlugin, BuildInfoPlugin)
   .in(file("modules/core"))
   .settings(
     name := "dumbo",
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
+    buildInfoPackage := "dumbo",
+    buildInfoKeys := {
+      val isNative = crossProjectPlatform.value.identifier == "native"
+      Seq[BuildInfoKey](
+        version,
+        scalaVersion,
+        scalaBinaryVersion,
+      ) ++ (if (isNative) Seq(BuildInfoKey("scalaNativeVersion" -> nativeVersion)) else Seq())
+    },
   )
   .settings(commonSettings)
+
+lazy val cli = crossProject(NativePlatform)
+  .crossType(CrossType.Full)
+  .enablePlugins(AutomateHeaderPlugin)
+  .in(file("modules/cli"))
+  .dependsOn(core)
+  .settings(
+    scalaVersion := `scala-3`,
+    name         := "dumbo-cli",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % munitVersion % Test
+    ),
+  )
+  .settings(commonSettings)
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
+  .nativeSettings(
+    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
+    nativeBrewFormulas ++= brewFormulas,
+  )
+
+lazy val cliNative      = cli.native
+lazy val buildCliBinary = taskKey[File]("")
+buildCliBinary := {
+  def normalise(s: String) = s.toLowerCase.replaceAll("[^a-z0-9]+", "")
+  val props                = sys.props.toMap
+  val os = normalise(props.getOrElse("os.name", "")) match {
+    case p if p.startsWith("linux")                         => "linux"
+    case p if p.startsWith("windows")                       => "windows"
+    case p if p.startsWith("osx") || p.startsWith("macosx") => "macosx"
+    case _                                                  => "unknown"
+  }
+
+  val arch = (
+    normalise(props.getOrElse("os.arch", "")),
+    props.getOrElse("sun.arch.data.model", "64"),
+  ) match {
+    case ("amd64" | "x64" | "x8664" | "x86", bits) => s"x86_${bits}"
+    case ("aarch64" | "arm64", bits)               => s"aarch$bits"
+    case _                                         => "unknown"
+  }
+
+  val name    = s"dumbo-$arch-$os"
+  val built   = (cliNative / Compile / nativeLink).value
+  val destBin = (cliNative / target).value / "bin" / name
+  val destZip = (cliNative / target).value / "bin" / s"$name.zip"
+
+  IO.copyFile(built, destBin)
+  sLog.value.info(s"Built cli binary in $destBin")
+
+  IO.zip(Seq((built, "dumbo")), destZip, None)
+  sLog.value.info(s"Built cli binary zip in $destZip")
+
+  destBin
+}
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
@@ -118,8 +214,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     publish / skip := true,
     scalacOptions -= "-Xfatal-warnings",
     libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit"             % "1.0.0-M10",
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4",
+      "org.scalameta" %%% "munit"             % munitVersion,
+      "org.typelevel" %%% "munit-cats-effect" % munitCEVersion,
     ),
     testFrameworks += new TestFramework("munit.Framework"),
     testOptions += {
@@ -128,8 +224,10 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
       } else Tests.Argument()
     },
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % "0.1.6",
+    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
+    Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     scalaVersion := `scala-3`,
     nativeConfig ~= {
