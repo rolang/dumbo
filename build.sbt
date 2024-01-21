@@ -73,6 +73,22 @@ ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
   cond = Some("startsWith(github.ref, 'refs/tags/')"),
 )
 
+ThisBuild / githubWorkflowPublish += WorkflowStep.Run(
+  name = Some("Release docker image"),
+  commands = List(
+    """echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin""",
+    "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
+    "cd docker && docker build . -t rolang/dumbo:${RELEASE_TAG}-alpine",
+    "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
+    "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
+    "docker push rolang/dumbo:latest-alpine",
+  ),
+  env = Map(
+    "DOCKER_PASSWORD" -> "${{ secrets.DOCKER_PASSWORD }}"
+  ),
+  cond = Some("startsWith(github.ref, 'refs/tags/')"),
+)
+
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
   name = Some("Run example (covers reading resources from a jar)"),
