@@ -15,3 +15,4 @@ target/
 .vscode/
 .bloop/
 metals.sbt
+docker-build/bin

@@ -10,8 +10,9 @@ Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway 
 
 ## Currently supports:
 
-### Versioned Migrations as specified by Flyway  
-  ![Versioned Migrations](./docs/assets/versioned_migrations.png)
+### Versioned Migrations as specified by Flyway
+
+![Versioned Migrations](./docs/assets/versioned_migrations.png)
 
 Each versioned migration must be assigned a unique version.  
  A simple increasing integer or any version is valid as long as it conforms to the usual dotted notation:
@@ -26,16 +27,18 @@ Each versioned migration must be assigned a unique version.
 - 2013.01.15.11.35.56
 
 ### Script Config Files
-Similar to [Flyway script config files](https://documentation.red-gate.com/flyway/flyway-cli-and-api/configuration/script-config-files) it's possible to configure migrations on a per-script basis.  
+
+Similar to [Flyway script config files](https://documentation.red-gate.com/flyway/flyway-cli-and-api/configuration/script-config-files) it's possible to configure migrations on a per-script basis.
 
 This is achieved by creating a script configuration file in the same folder as the migration.  
-The script configuration file name must match the migration file name, with the `.conf` suffix added.  
+The script configuration file name must match the migration file name, with the `.conf` suffix added.
 
 For example a migration file `db/V1__my_script.sql` would have a script configuration file `db/V1__my_script.sql.conf`.
 
 #### Structure
 
 Script config files have the following structure:
+
 ```
 key=value
 ```
@@ -43,15 +46,30 @@ key=value
 #### Reference
 
 - **executeInTransaction**  
-  Manually determine whether or not to execute this migration in a transaction. 
+  Manually determine whether or not to execute this migration in a transaction.
 
   This is useful where certain statements can only execute outside a transaction (like `CREATE INDEX CONCURRENTLY` etc.)  
   Example:
+
   ```
   executeInTransaction=false
   ```
 
 ## Usage example
+
+For usage via command line see [command-line](#command-line) section.
+
+In a sbt project dumbo can be added like:
+
+```
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.0.7"
+```
+
+To include snapshot releases, add snapshot resolver:
+
+```
+resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+```
 
 Examples can be viewed in [modules/example](./modules/example/).  
 Similar to usage of the Flyway Java library, given versioned migrations in the resources folder:
@@ -175,4 +193,130 @@ dumboWithResouces.apply(
 dumboWithResouces.withMigrationStateLogAfter[IO](5.seconds)(
   /* use config as above */
 )
+```
+
+## Command-line
+
+Dumbo ships with a command line tool as a native binary.
+
+### Download and installation
+
+Note: the executable depends on [utf8proc](https://github.com/JuliaStrings/utf8proc) and [s2n-tls](https://github.com/aws/s2n-tls).
+
+#### Linux
+
+##### Arch
+
+```shell
+# install prerequisites
+sudo pacman -S s2n-tls libutf8proc
+
+# download and run dumbo
+curl -L https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-x86_64-linux > dumbo && chmod +x dumbo
+./dumbo -v
+```
+
+##### Alpine
+
+```shell
+# install prerequisites
+apk update && apk add gcompat libgcc libstdc++ s2n-tls utf8proc
+
+# download and run dumbo
+wget https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-x86_64-linux -O dumbo && chmod +x dumbo
+./dumbo -v
+```
+
+##### Ubuntu / Debian
+
+As of now `s2n-tls` is not available as apt package.
+For utf8proc the package `libutf8proc3` is required which is currently only available from Ubuntu `24.04` / `noble` via apt.  
+Alternatively one can install the depenedncies via [homebrew](https://brew.sh) as follows:
+
+```shell
+# install homebrew if not already installed https://docs.brew.sh/Homebrew-on-Linux
+sudo apt-get install build-essential procps curl file git
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# install prerequisites and include homebrew lib
+/home/linuxbrew/.linuxbrew/bin/brew install s2n utf8proc
+export LD_LIBRARY_PATH="/home/linuxbrew/.linuxbrew/lib"
+
+# download and run dumbo
+curl -L https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-x86_64-linux > dumbo && chmod +x dumbo
+./dumbo -v
+```
+
+#### Docker
+
+A docker image with the command line is published to docker hub: [rolang/dumbo](https://hub.docker.com/r/rolang/dumbo).
+
+To print the command line help run:
+
+```shell
+docker run rolang/dumbo:latest-alpine help
+```
+
+To run the example migrations in this repository, run from repository's root directory:
+
+1. Boot up a Postgres instance
+
+```shell
+docker compose up pg_1
+```
+
+2. Run example migration
+
+```shell
+docker run --net="host" \
+  -v ./modules/example/src/main/resources/db/migration:/migration \
+  rolang/dumbo:latest-alpine \
+  -user=postgres \
+  -password=postgres \
+  -url=postgresql://localhost:5432/postgres \
+  -location=/migration \
+  migrate
+```
+
+### Command-line usage
+
+```
+dumbo [options] [command]
+```
+
+##### Commands:
+
+| Command                | Description                                                       |
+| ---------------------- | ----------------------------------------------------------------- |
+| help                   | Print this usage info and exit                                    |
+| migrate                | Migrates the database                                             |
+| validate               | Validates the applied migrations against the ones in the location |
+| version, -v, --version | Print the Dumbo version                                           |
+
+##### Configuration parameters (Format: -key=value):
+
+| Configuration     | Description                                                                                               | Default                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | ----------------------- |
+| location          | Path to directory to scan for migrations                                                                  |                         |
+| table             | The name of Dumbo's schema history table                                                                  | `flyway_schema_history` |
+| password          | Password to use to connect to the database                                                                |                         |
+| url               | Url to use to connect to the database                                                                     |                         |
+| validateOnMigrate | Validate when running migrate                                                                             | `true`                  |
+| user              | User to use to connect to the database                                                                    |                         |
+| schemas           | Comma-separated list of the schemas managed by Dumbo. First schema will be used as default schema if set. | `public`                |
+| ssl               | SSL mode to use: `none`, `trusted` or `system`.                                                           | `none`                  |
+
+##### Examples:
+
+```shell
+dumbo \
+  -user=postgres \
+  -password="my safe passw0rd" \
+  -url=postgresql://localhost:5432/postgres \
+  -location=/path/to/db/migration \
+  migrate
+```
+
+```shell
+dumbo help migrate
 ```

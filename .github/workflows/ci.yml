@@ -249,6 +249,19 @@ jobs:
         with:
           files: modules/cli/native/target/bin/*
 
+      - name: Release docker image
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin
+          export RELEASE_TAG=${GITHUB_REF_NAME#'v'}
+          cp -r modules/cli/native/target/bin docker-build/bin
+          docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine
+          docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine
+          docker push rolang/dumbo:${RELEASE_TAG}-alpine
+          docker push rolang/dumbo:latest-alpine
+
   dependency-submission:
     name: Submit Dependencies
     if: github.event_name != 'pull_request'
