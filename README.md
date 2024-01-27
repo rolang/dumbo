@@ -65,6 +65,12 @@ In a sbt project dumbo can be added like:
 libraryDependencies += "dev.rolang" %% "dumbo" % "0.0.7"
 ```
 
+To include snapshot releases, add snapshot resolver:
+
+```
+resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+```
+
 Examples can be viewed in [modules/example](./modules/example/).  
 Similar to usage of the Flyway Java library, given versioned migrations in the resources folder:
 
@@ -243,7 +249,8 @@ curl -L https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-x86_6
 
 #### Docker
 
-A docker image is also available with dumbo as entrypoint.
+A docker image with the command line is published to docker hub: [rolang/dumbo](https://hub.docker.com/r/rolang/dumbo).
+
 To print the command line help run:
 
 ```shell

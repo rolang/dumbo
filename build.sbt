@@ -78,7 +78,8 @@ ThisBuild / githubWorkflowPublish += WorkflowStep.Run(
   commands = List(
     """echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin""",
     "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
-    "cd docker && docker build . -t rolang/dumbo:${RELEASE_TAG}-alpine",
+    "cp -r modules/cli/native/target/bin docker-build/bin",
+    "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
     "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
     "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
     "docker push rolang/dumbo:latest-alpine",
