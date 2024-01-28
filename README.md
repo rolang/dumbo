@@ -6,7 +6,8 @@
 ![Logo](./docs/assets/logo.png)
 
 Simple database migration tool for Scala + Postgres with [skunk](https://typelevel.org/skunk/) that can be deployed on JVM and Native.  
-Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway compatible history state to allow you to switch to Flyway if necessary.
+Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway compatible history state to allow you to switch to Flyway if necessary.  
+You might also be able to simply switch from Flyway to Dumbo without any changes in migration files or the history state, depending on used Flyway features.
 
 ## Currently supports:
 
