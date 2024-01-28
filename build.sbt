@@ -138,7 +138,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, cli, tests, testsFlyway, example)
   .settings(commonSettings)
 
-lazy val skunkVersion = "0.6.2"
+lazy val skunkVersion = "0.6.3"
 
 lazy val epollcatVersion = "0.1.6"
 
@@ -252,8 +252,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "10.1.0"
-lazy val postgresqlVersion = "42.7.0"
+lazy val flywayVersion     = "10.6.0"
+lazy val postgresqlVersion = "42.7.1"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
   .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
