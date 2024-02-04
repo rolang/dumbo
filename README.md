@@ -1,7 +1,7 @@
 # Dumbo
 
-[![Sonatype Releases](https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.rolang/dumbo_2.13.svg?label=Sonatype%20Release)](https://oss.sonatype.org/content/repositories/releases/dev/rolang/dumbo_2.13/)
-[![Sonatype Snapshots](https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.rolang/dumbo_2.13.svg?label=Sonatype%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/dev/rolang/dumbo_2.13/)
+[![Sonatype Releases](https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.rolang/dumbo_3.svg?label=Sonatype%20Release)](https://oss.sonatype.org/content/repositories/releases/dev/rolang/dumbo_3/)
+[![Sonatype Snapshots](https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.rolang/dumbo_3.svg?label=Sonatype%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/dev/rolang/dumbo_3/)
 
 ![Logo](./docs/assets/logo.png)
 
@@ -62,8 +62,14 @@ For usage via command line see [command-line](#command-line) section.
 
 In a sbt project dumbo can be added like:
 
+```scala
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.1.x"
 ```
-libraryDependencies += "dev.rolang" %% "dumbo" % "0.0.7"
+
+_For compatibility with skunk `0.6.x` + natchez use release series `0.0.x`_:
+
+```scala
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.0.x"
 ```
 
 To include snapshot releases, add snapshot resolver:
