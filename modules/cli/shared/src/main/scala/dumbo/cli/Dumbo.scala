@@ -6,7 +6,7 @@ package dumbo.cli
 
 import cats.effect.IO
 import cats.effect.ExitCode
-import natchez.Trace.Implicits.noop
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.SSL
 import cats.effect.std.Console
 import dumbo.exception.DumboValidationException

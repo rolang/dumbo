@@ -2,13 +2,12 @@
 // This software is licensed under the MIT License (MIT).
 // For more information see LICENSE or https://opensource.org/licenses/MIT
 
-// NOTE: Copied from skunk 0.6.0 to allow to run multiple-query statements as long as it is not supported: https://github.com/typelevel/skunk/issues/695
-// Postgres docs: https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
 package dumbo.internal.net.protocol
 
 import cats.MonadError
 import cats.syntax.all.*
-import natchez.Trace
+import org.typelevel.otel4s.Attribute
+import org.typelevel.otel4s.trace.{Span, Tracer}
 import skunk.exception.*
 import skunk.net.MessageSocket
 import skunk.net.message.{Query as QueryMessage, *}
@@ -16,14 +15,14 @@ import skunk.net.protocol.{Query as _, *}
 import skunk.{Statement, Void}
 
 // new Query type to support any multi-query statements with discarded results
-// this could be removed in the future if it can be made part of skunk
+// this could be removed in the future if it can be made part of skunk: https://github.com/typelevel/skunk/pull/1023
 private[dumbo] trait Query[F[_]] {
   def apply(statement: Statement[Void]): F[Unit]
 }
 
 private[dumbo] object Query {
 
-  def apply[F[_]: Exchange: MessageSocket: Trace](implicit ev: MonadError[F, Throwable]): Query[F] =
+  def apply[F[_]: Exchange: MessageSocket: Tracer](implicit ev: MonadError[F, Throwable]): Query[F] =
     new Query[F] {
 
       def finishCopyOut: F[Unit] = receive.iterateUntil {
@@ -41,19 +40,8 @@ private[dumbo] object Query {
               case Some(e) => e.raiseError[F, Unit]
             }
 
-          case RowDescription(_) | RowData(_) | CommandComplete(_) | EmptyQueryResponse =>
+          case RowDescription(_) | RowData(_) | CommandComplete(_) | EmptyQueryResponse | NoticeResponse(_) =>
             finishUpDiscard(stmt, error)
-
-          case NoticeResponse(info) =>
-            error match {
-              case None =>
-                for {
-                  hi <- history(Int.MaxValue)
-                  err = new PostgresErrorException(stmt.sql, Some(stmt.origin), info, hi)
-                  c  <- finishUpDiscard(stmt, Some(err))
-                } yield c
-              case _ => finishUpDiscard(stmt, error)
-            }
 
           case ErrorResponse(info) =>
             error match {
@@ -77,8 +65,10 @@ private[dumbo] object Query {
             finishCopyOut *> finishUpDiscard(stmt, error.orElse(new CopyNotSupportedException(stmt).some))
         }
 
-      override def apply(command: Statement[Void]): F[Unit] = exchange("query") {
-        Trace[F].put("command.sql" -> command.sql) *> send(QueryMessage(command.sql)) *> finishUpDiscard(command, None)
+      override def apply(command: Statement[Void]): F[Unit] = exchange("query") { (span: Span[F]) =>
+        span.addAttribute(
+          Attribute("command.sql", command.sql)
+        ) *> send(QueryMessage(command.sql)) *> finishUpDiscard(command, None)
       }
 
     }

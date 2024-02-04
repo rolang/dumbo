@@ -12,53 +12,43 @@ import cats.syntax.all.*
 import dumbo.internal.net.protocol.Query
 import fs2.Stream
 import fs2.concurrent.Signal
-import fs2.io.net.{SocketGroup, SocketOption}
-import natchez.Trace
+import fs2.io.net.Socket
+import org.typelevel.otel4s.trace.Tracer
 import skunk.data.*
 import skunk.net.protocol.{Query as SkunkProtocolQuery, *}
 import skunk.net.{Protocol as SkunkProtocol, *}
 import skunk.util.{Namer, Typer}
-import skunk.{Command, Query as SkunkQuery, Statement, Void}
+import skunk.{Command, Query as SkunkQuery, RedactionStrategy, Statement, Void}
 
 // extension of skunk.net.Protocol to support any multi-query statements with discarded results
-// this could be removed in the future if it can be made part of skunk
+// this could be removed in the future if it can be made part of skunk: https://github.com/typelevel/skunk/pull/1023
 private[dumbo] trait Protocol[F[_]] extends SkunkProtocol[F] {
   def execute_(statement: Statement[Void]): F[Unit]
 }
 
 private[dumbo] object Protocol {
 
-  def apply[F[_]: Temporal: Trace: Console](
-    host: String,
-    port: Int,
+  def apply[F[_]: Temporal: Tracer: Console](
     debug: Boolean,
     nam: Namer[F],
-    sg: SocketGroup[F],
-    socketOptions: List[SocketOption],
+    sockets: Resource[F, Socket[F]],
     sslOptions: Option[SSLNegotiation.Options[F]],
     describeCache: Describe.Cache[F],
     parseCache: Parse.Cache[F],
     readTimeout: Duration,
+    redactionStrategy: RedactionStrategy,
   ): Resource[F, Protocol[F]] =
     for {
-      bms <- BufferedMessageSocket[F](
-               host,
-               port,
-               256,
-               debug,
-               sg,
-               socketOptions,
-               sslOptions,
-               readTimeout,
-             )
-      p <- Resource.eval(fromMessageSocket(bms, nam, describeCache, parseCache))
+      bms <- BufferedMessageSocket[F](256, debug, sockets, sslOptions, readTimeout)
+      p   <- Resource.eval(fromMessageSocket(bms, nam, describeCache, parseCache, redactionStrategy))
     } yield p
 
-  def fromMessageSocket[F[_]: Concurrent: Trace](
+  def fromMessageSocket[F[_]: Concurrent: Tracer](
     bms: BufferedMessageSocket[F],
     nam: Namer[F],
     dc: Describe.Cache[F],
     pc: Parse.Cache[F],
+    redactionStrategy: RedactionStrategy,
   ): F[Protocol[F]] =
     Exchange[F].map { ex =>
       new Protocol[F] {
@@ -72,18 +62,17 @@ private[dumbo] object Protocol {
         override def parameters: Signal[F, Map[String, String]] = bms.parameters
 
         override def prepare[A](command: Command[A], ty: Typer): F[SkunkProtocol.PreparedCommand[F, A]] =
-          Prepare[F](describeCache, parseCache).apply(command, ty)
+          Prepare[F](describeCache, parseCache, redactionStrategy).apply(command, ty)
 
         override def prepare[A, B](query: SkunkQuery[A, B], ty: Typer): F[SkunkProtocol.PreparedQuery[F, A, B]] =
-          Prepare[F](describeCache, parseCache).apply(query, ty)
+          Prepare[F](describeCache, parseCache, redactionStrategy).apply(query, ty)
 
-        override def execute(command: Command[Void]): F[Completion] = SkunkProtocolQuery[F].apply(command)
+        override def execute(command: Command[Void]): F[Completion] =
+          SkunkProtocolQuery[F](redactionStrategy).apply(command)
 
         override def execute[B](query: SkunkQuery[Void, B], ty: Typer): F[List[B]] =
-          SkunkProtocolQuery[F].apply(query, ty)
-
+          SkunkProtocolQuery[F](redactionStrategy).apply(query, ty)
         override def execute_(statement: Statement[Void]): F[Unit] = Query[F].apply(statement)
-
         override def startup(
           user: String,
           database: String,
