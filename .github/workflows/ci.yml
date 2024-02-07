@@ -109,24 +109,17 @@ jobs:
         if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-latest'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
-      - name: Generate CLI native binary
-        if: matrix.project == 'rootNative'
-        env:
-          SCALANATIVE_MODE: release-fast
-          SCALANATIVE_LTO: thin
-        run: sbt buildCliBinary
-
       - name: Run example (covers reading resources from a jar)
         if: matrix.project == 'rootJVM'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' example/run
 
       - name: Make target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: mkdir -p modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
+        run: mkdir -p modules/core/native/target modules/core/jvm/target project/target
 
       - name: Compress target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: tar cf targets.tar modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
+        run: tar cf targets.tar modules/core/native/target modules/core/jvm/target project/target
 
       - name: Upload target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
@@ -242,25 +235,6 @@ jobs:
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
         run: sbt tlCiRelease
-
-      - name: Upload release binaries
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: modules/cli/native/target/bin/*
-
-      - name: Release docker image
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin
-          export RELEASE_TAG=${GITHUB_REF_NAME#'v'}
-          cp -r modules/cli/native/target/bin docker-build/bin
-          docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine
-          docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine
-          docker push rolang/dumbo:${RELEASE_TAG}-alpine
-          docker push rolang/dumbo:latest-alpine
 
   dependency-submission:
     name: Submit Dependencies

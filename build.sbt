@@ -54,42 +54,6 @@ ThisBuild / githubWorkflowBuild := {
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
 
-ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
-  commands = List("sbt buildCliBinary"),
-  name = Some("Generate CLI native binary"),
-  cond = Some("matrix.project == 'rootNative'"),
-  env = Map(
-    "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
-    "SCALANATIVE_LTO"  -> LTO.thin.toString(),
-  ),
-)
-
-ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
-  ref = UseRef.Public("softprops", "action-gh-release", "v1"),
-  name = Some("Upload release binaries"),
-  params = Map(
-    "files" -> "modules/cli/native/target/bin/*"
-  ),
-  cond = Some("startsWith(github.ref, 'refs/tags/')"),
-)
-
-ThisBuild / githubWorkflowPublish += WorkflowStep.Run(
-  name = Some("Release docker image"),
-  commands = List(
-    """echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin""",
-    "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
-    "cp -r modules/cli/native/target/bin docker-build/bin",
-    "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
-    "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
-    "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
-    "docker push rolang/dumbo:latest-alpine",
-  ),
-  env = Map(
-    "DOCKER_PASSWORD" -> "${{ secrets.DOCKER_PASSWORD }}"
-  ),
-  cond = Some("startsWith(github.ref, 'refs/tags/')"),
-)
-
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
   name = Some("Run example (covers reading resources from a jar)"),
@@ -135,7 +99,7 @@ lazy val commonSettings = List(
 
 lazy val root = tlCrossRootProject
   .settings(name := "dumbo")
-  .aggregate(core, cli, tests, testsFlyway, example)
+  .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
 lazy val skunkVersion = "0.6.3"
@@ -166,60 +130,6 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     },
   )
   .settings(commonSettings)
-
-lazy val cli = crossProject(NativePlatform)
-  .crossType(CrossType.Full)
-  .enablePlugins(AutomateHeaderPlugin)
-  .in(file("modules/cli"))
-  .dependsOn(core)
-  .settings(
-    scalaVersion := `scala-3`,
-    name         := "dumbo-cli",
-    libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit" % munitVersion % Test
-    ),
-  )
-  .settings(commonSettings)
-  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
-  .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
-    nativeBrewFormulas ++= brewFormulas,
-  )
-
-lazy val cliNative      = cli.native
-lazy val buildCliBinary = taskKey[File]("")
-buildCliBinary := {
-  def normalise(s: String) = s.toLowerCase.replaceAll("[^a-z0-9]+", "")
-  val props                = sys.props.toMap
-  val os = normalise(props.getOrElse("os.name", "")) match {
-    case p if p.startsWith("linux")                         => "linux"
-    case p if p.startsWith("windows")                       => "windows"
-    case p if p.startsWith("osx") || p.startsWith("macosx") => "macosx"
-    case _                                                  => "unknown"
-  }
-
-  val arch = (
-    normalise(props.getOrElse("os.arch", "")),
-    props.getOrElse("sun.arch.data.model", "64"),
-  ) match {
-    case ("amd64" | "x64" | "x8664" | "x86", bits) => s"x86_${bits}"
-    case ("aarch64" | "arm64", bits)               => s"aarch$bits"
-    case _                                         => "unknown"
-  }
-
-  val name    = s"dumbo-cli-$arch-$os"
-  val built   = (cliNative / Compile / nativeLink).value
-  val destBin = (cliNative / target).value / "bin" / name
-  val destZip = (cliNative / target).value / "bin" / s"$name.zip"
-
-  IO.copyFile(built, destBin)
-  sLog.value.info(s"Built cli binary in $destBin")
-
-  IO.zip(Seq((built, "dumbo")), destZip, None)
-  sLog.value.info(s"Built cli binary zip in $destZip")
-
-  destBin
-}
 
 lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
