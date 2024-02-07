@@ -66,7 +66,7 @@ In a sbt project dumbo can be added like:
 libraryDependencies += "dev.rolang" %% "dumbo" % "0.1.x"
 ```
 
-_For compatibility with skunk `0.6.x` + natchez use release series `0.0.x`_:
+_For compatibility with skunk `0.6.x` / natchez / Scala 2.12.x use release series `0.0.x`_:
 
 ```scala
 libraryDependencies += "dev.rolang" %% "dumbo" % "0.0.x"
