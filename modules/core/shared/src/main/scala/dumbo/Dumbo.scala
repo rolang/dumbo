@@ -20,7 +20,7 @@ import dumbo.internal.{ResourceReader, Session as DumboSession, Statements}
 import fs2.Stream
 import fs2.io.file.*
 import fs2.io.net.Network
-import natchez.Trace
+import org.typelevel.otel4s.trace.Tracer
 import skunk.codec.all.*
 import skunk.data.Completion
 import skunk.implicits.*
@@ -34,7 +34,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Trace[F], N: Network[F]) =
+  )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]) =
     new Dumbo[F](
       resReader = reader,
       sessionResource = toSessionResource(connection, defaultSchema, schemas),
@@ -51,7 +51,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit A: Async[F], C: Console[F], TRC: Trace[F]): Dumbo[F] = {
+  )(implicit A: Async[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
     implicit val network: Network[F] = Network.forAsync(A)
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
 
@@ -107,7 +107,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     connection: ConnectionConfig,
     defaultSchema: String,
     schemas: Set[String],
-  )(implicit T: Temporal[F], C: Console[F], TRC: Trace[F], N: Network[F]) = {
+  )(implicit T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]) = {
     val searchPath = (schemas + defaultSchema).mkString(",")
     val params     = SkunkSession.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
 

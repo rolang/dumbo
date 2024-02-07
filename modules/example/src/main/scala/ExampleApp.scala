@@ -4,7 +4,7 @@
 
 import cats.effect.{IO, IOApp}
 import dumbo.{ConnectionConfig, Dumbo}
-import natchez.Trace.Implicits.noop
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
 object ExampleApp extends IOApp.Simple {
   override def run: IO[Unit] = Dumbo

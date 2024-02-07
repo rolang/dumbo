@@ -1,13 +1,12 @@
 import scala.scalanative.build.*
 
-lazy val `scala-2.12` = "2.12.18"
 lazy val `scala-2.13` = "2.13.12"
 lazy val `scala-3`    = "3.3.1"
 
-ThisBuild / tlBaseVersion      := "0.0"
+ThisBuild / tlBaseVersion      := "0.1"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
-ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`, `scala-2.12`)
+ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
 
 ThisBuild / organization := "dev.rolang"
 ThisBuild / licenses     := Seq(License.MIT)
@@ -97,8 +96,7 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
 )
 
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
-  MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.12")),
-  MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.13")),
+  MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.13"))
 )
 
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
@@ -138,7 +136,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, cli, tests, testsFlyway, example)
   .settings(commonSettings)
 
-lazy val skunkVersion = "0.6.3"
+lazy val skunkVersion = "1.0.0-M4"
 
 lazy val epollcatVersion = "0.1.6"
 

@@ -12,7 +12,7 @@ import cats.implicits.*
 import dumbo.exception.DumboValidationException
 import dumbo.{ConnectionConfig, Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
-import natchez.Trace.Implicits.noop
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.Session
 import skunk.implicits.*
 

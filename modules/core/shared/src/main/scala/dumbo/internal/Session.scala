@@ -11,20 +11,22 @@ import cats.data.Kleisli
 import cats.effect.*
 import cats.effect.std.Console
 import cats.syntax.all.*
+import com.comcast.ip4s.{Hostname, Port, SocketAddress}
 import dumbo.internal.net.Protocol
+import fs2.Stream
 import fs2.concurrent.Signal
-import fs2.io.net.{Network, SocketGroup, SocketOption}
-import fs2.{Pipe, Stream}
-import natchez.Trace
+import fs2.io.net.{Network, Socket, SocketGroup, SocketOption}
+import org.typelevel.otel4s.trace.Tracer
 import skunk.codec.all.bool
 import skunk.data.{Identifier, *}
 import skunk.net.SSLNegotiation
 import skunk.net.protocol.{Describe, Parse}
+import skunk.util.Typer.Strategy.{BuiltinsOnly, SearchPath}
 import skunk.util.*
 import skunk.{Session as SkunkSession, *}
 
 // extension of skunk.Session to support any multi-query statements with discarded results
-// this could be removed in the future if it can be made part of skunk
+// this could be removed in the future if it can be made part of skunk: https://github.com/typelevel/skunk/pull/1023
 private[dumbo] trait Session[F[_]] extends SkunkSession[F] {
   def execute_(statement: Statement[skunk.Void]): F[Unit]
 }
@@ -48,7 +50,7 @@ private[dumbo] object Session {
       Recycler(_.execute(Command("RESET ALL", Origin.unknown, Void.codec)).as(true))
   }
 
-  def single[F[_]: Temporal: Trace: Network: Console](
+  def single[F[_]: Temporal: Tracer: Network: Console](
     host: String,
     port: Int = 5432,
     user: String,
@@ -77,7 +79,7 @@ private[dumbo] object Session {
       queryCache,
       parseCache,
       readTimeout,
-    ).apply(Trace[F])
+    ).apply(Tracer[F])
 
   def singleF[F[_]: Temporal: Network: Console](
     host: String,
@@ -93,8 +95,8 @@ private[dumbo] object Session {
     queryCache: Int = 1024,
     parseCache: Int = 1024,
     readTimeout: Duration = Duration.Inf,
-  ): Trace[F] => Resource[F, Session[F]] =
-    Kleisli((_: Trace[F]) =>
+  ): Tracer[F] => Resource[F, Session[F]] =
+    Kleisli((_: Tracer[F]) =>
       pooledF(
         host = host,
         port = port,
@@ -111,7 +113,7 @@ private[dumbo] object Session {
         parseCache = parseCache,
         readTimeout = readTimeout,
       )
-    ).flatMap(f => Kleisli((T: Trace[F]) => f(T))).run
+    ).flatMap(f => Kleisli((T: Tracer[F]) => f(T))).run
 
   def pooledF[F[_]: Temporal: Network: Console](
     host: String,
@@ -129,10 +131,10 @@ private[dumbo] object Session {
     queryCache: Int = 1024,
     parseCache: Int = 1024,
     readTimeout: Duration = Duration.Inf,
-  ): Resource[F, Trace[F] => Resource[F, Session[F]]] = {
+  ): Resource[F, Tracer[F] => Resource[F, Session[F]]] = {
 
     def session(socketGroup: SocketGroup[F], sslOp: Option[SSLNegotiation.Options[F]], cache: Describe.Cache[F])(
-      implicit T: Trace[F]
+      implicit T: Tracer[F]
     ): Resource[F, Session[F]] =
       for {
         pc <- Resource.eval(Parse.Cache.empty[F](parseCache))
@@ -159,11 +161,11 @@ private[dumbo] object Session {
     for {
       dc    <- Resource.eval(Describe.Cache.empty[F](commandCache, queryCache))
       sslOp <- ssl.toSSLNegotiationOptions(if (debug) logger.some else none)
-      pool  <- Pool.ofF((T: Trace[F]) => session(Network[F], sslOp, dc)(T), max)(Session.Recyclers.full)
+      pool  <- Pool.ofF((T: Tracer[F]) => session(Network[F], sslOp, dc)(T), max)(Session.Recyclers.full)
     } yield pool
   }
 
-  def fromSocketGroup[F[_]: Temporal: Trace: Console](
+  def fromSocketGroup[F[_]: Tracer: Console](
     socketGroup: SocketGroup[F],
     host: String,
     port: Int = 5432,
@@ -178,51 +180,73 @@ private[dumbo] object Session {
     describeCache: Describe.Cache[F],
     parseCache: Parse.Cache[F],
     readTimeout: Duration = Duration.Inf,
-  ): Resource[F, Session[F]] =
+    redactionStrategy: RedactionStrategy = RedactionStrategy.OptIn,
+  )(implicit ev: Temporal[F]): Resource[F, Session[F]] = {
+    def fail[A](msg: String): Resource[F, A] =
+      Resource.eval(ev.raiseError(new Exception(msg)))
+
+    def sock: Resource[F, Socket[F]] =
+      (Hostname.fromString(host), Port.fromInt(port)) match {
+        case (Some(validHost), Some(validPort)) =>
+          socketGroup.client(SocketAddress(validHost, validPort), socketOptions)
+        case (None, _) => fail(s"""Hostname: "$host" is not syntactically valid.""")
+        case (_, None) => fail(s"Port: $port falls out of the allowed range.")
+      }
+
     for {
       namer <- Resource.eval(Namer[F])
-      proto <- Protocol.apply[F](
-                 host,
-                 port,
-                 debug,
-                 namer,
-                 socketGroup,
-                 socketOptions,
-                 sslOptions,
-                 describeCache,
-                 parseCache,
-                 readTimeout,
-               )
-      _    <- Resource.eval(proto.startup(user, database, password, parameters))
-      sess <- Resource.make(SkunkSession.fromProtocol(proto, namer, strategy))(_ => proto.cleanup)
-    } yield new Session[F] {
-      override def execute_(statement: Statement[Void]): F[Unit]  = proto.execute_(statement)
-      override def parameters: Signal[F, Map[String, String]]     = sess.parameters
-      def parameter(key: String): Stream[F, String]               = sess.parameter(key)
-      def transactionStatus: Signal[F, TransactionStatus]         = sess.transactionStatus
-      def execute[A](query: Query[Void, A]): F[List[A]]           = sess.execute(query)
-      def execute[A, B](query: Query[A, B])(args: A): F[List[B]]  = sess.execute(query)(args)
-      def unique[A](query: Query[Void, A]): F[A]                  = sess.unique(query)
-      def unique[A, B](query: Query[A, B])(args: A): F[B]         = sess.unique(query)(args)
-      def option[A](query: Query[Void, A]): F[Option[A]]          = sess.option(query)
-      def option[A, B](query: Query[A, B])(args: A): F[Option[B]] = sess.option(query)(args)
-      def stream[A, B](command: Query[A, B])(args: A, chunkSize: Int): Stream[F, B] =
-        sess.stream(command)(args, chunkSize)
-      def cursor[A, B](query: Query[A, B])(args: A): Resource[F, Cursor[F, B]] = sess.cursor(query)(args)
-      def execute(command: Command[Void]): F[Completion]                       = sess.execute(command)
-      def execute[A](command: Command[A])(args: A): F[Completion]              = sess.execute(command)(args)
-      def prepare[A, B](query: Query[A, B]): F[PreparedQuery[F, A, B]]         = sess.prepare(query)
-      def prepare[A](command: Command[A]): F[PreparedCommand[F, A]]            = sess.prepare(command)
-      def pipe[A](command: Command[A]): Pipe[F, A, Completion]                 = sess.pipe(command)
-      def pipe[A, B](query: Query[A, B], chunkSize: Int): Pipe[F, A, B]        = sess.pipe(query, chunkSize)
-      def channel(name: Identifier): Channel[F, String, String]                = sess.channel(name)
-      def transaction[A]: Resource[F, Transaction[F]]                          = sess.transaction
-      def transaction[A](
-        isolationLevel: TransactionIsolationLevel,
-        accessMode: TransactionAccessMode,
-      ): Resource[F, Transaction[F]] = sess.transaction(isolationLevel, accessMode)
-      def typer: Typer                     = sess.typer
-      def describeCache: Describe.Cache[F] = sess.describeCache
-      def parseCache: Parse.Cache[F]       = sess.parseCache
+      proto <- Protocol[F](debug, namer, sock, sslOptions, describeCache, parseCache, readTimeout, redactionStrategy)
+      _     <- Resource.eval(proto.startup(user, database, password, parameters))
+      sess  <- Resource.make(fromProtocol(proto, namer, strategy, redactionStrategy))(_ => proto.cleanup)
+    } yield sess
+  }
+
+  def fromProtocol[F[_]](
+    proto: Protocol[F],
+    namer: Namer[F],
+    strategy: Typer.Strategy,
+    redactionStrategy: RedactionStrategy,
+  )(implicit ev: MonadCancel[F, Throwable]): F[Session[F]] = {
+    val ft: F[Typer] =
+      strategy match {
+        case BuiltinsOnly => Typer.Static.pure[F]
+        case SearchPath   => Typer.fromProtocol(proto)
+      }
+
+    ft.map { typ =>
+      new SkunkSession.Impl[F] with Session[F] {
+        override val typer: Typer                                          = typ
+        override def execute_(statement: Statement[Void]): F[Unit]         = proto.execute_(statement)
+        override def execute(command: Command[Void]): F[Completion]        = proto.execute(command)
+        override def channel(name: Identifier): Channel[F, String, String] = Channel.fromNameAndProtocol(name, proto)
+        override def parameters: Signal[F, Map[String, String]]            = proto.parameters
+        override def parameter(key: String): Stream[F, String]             = parameters.discrete.map(_.get(key)).unNone.changes
+        override def transactionStatus: Signal[F, TransactionStatus]       = proto.transactionStatus
+        override def execute[A](query: Query[Void, A]): F[List[A]]         = proto.execute(query, typer)
+        override def unique[A](query: Query[Void, A]): F[A] =
+          execute(query).flatMap {
+            case a :: Nil => a.pure[F]
+            case Nil      => ev.raiseError(new RuntimeException("Expected exactly one row, none returned."))
+            case _        => ev.raiseError(new RuntimeException("Expected exactly one row, more returned."))
+          }
+        override def option[A](query: Query[Void, A]): F[Option[A]] =
+          execute(query).flatMap {
+            case a :: Nil => a.some.pure[F]
+            case Nil      => none[A].pure[F]
+            case _        => ev.raiseError(new RuntimeException("Expected at most one row, more returned."))
+          }
+        override def prepare[A, B](query: Query[A, B]): F[PreparedQuery[F, A, B]] =
+          proto.prepare(query, typer).map(PreparedQuery.fromProto(_, redactionStrategy))
+        override def prepare[A](command: Command[A]): F[PreparedCommand[F, A]] =
+          proto.prepare(command, typer).map(PreparedCommand.fromProto(_))
+        override def transaction[A]: Resource[F, Transaction[F]] = Transaction.fromSession(this, namer, none, none)
+        override def transaction[A](
+          isolationLevel: TransactionIsolationLevel,
+          accessMode: TransactionAccessMode,
+        ): Resource[F, Transaction[F]] = Transaction.fromSession(this, namer, isolationLevel.some, accessMode.some)
+        override def describeCache: Describe.Cache[F] = proto.describeCache
+        override def parseCache: Parse.Cache[F]       = proto.parseCache
+      }
     }
+  }
 }
