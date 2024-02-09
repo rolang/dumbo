@@ -25,6 +25,7 @@ ThisBuild / semanticdbVersion          := scalafixSemanticdb.revision // use Sca
 ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(`scala-2.13`)
 
 // githubWorkflow
+ThisBuild / tlCiReleaseBranches += "series/0.0.x"
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
