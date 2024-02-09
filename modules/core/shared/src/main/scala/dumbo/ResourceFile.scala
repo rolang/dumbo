@@ -93,7 +93,7 @@ final case class ResourceFileDescription(
 object ResourceFileDescription {
   def fromNioPath(p: JPath): Either[String, ResourceFileDescription] = fromFilePath(Path.fromNioPath(p))
   def fromFilePath(p: Path): Either[String, ResourceFileDescription] = {
-    val pattern = "^V(.+)__(.+)\\.sql$".r
+    val pattern = "^V([^_]+)__(.+)\\.sql$".r
 
     p.fileName.toString match {
       case pattern(version, name) =>
