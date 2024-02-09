@@ -24,9 +24,8 @@ class ResourceFileDescriptionSpec extends ffstest.FTest {
       "V2013.01.15.11.35.56__test.sql",
     )
 
-    val (failures, versions) = fileNames
-      .map(s => ResourceFileDescription.fromFilePath(Path(s)))
-      .partitionMap(r => r)
+    val results              = fileNames.map(s => ResourceFileDescription.fromFilePath(Path(s)))
+    val (failures, versions) = (results.collect { case Left(e) => e }, results.collect { case Right(v) => v })
 
     assertEquals(failures, Nil)
 
