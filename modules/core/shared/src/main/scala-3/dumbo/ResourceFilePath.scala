@@ -7,7 +7,7 @@ package dumbo
 import scala.quoted.*
 import scala.jdk.CollectionConverters.*
 import java.io.File
-import java.nio.file.{Paths, Path as JPath}
+import java.nio.file.Paths
 import fs2.io.file.Path
 
 opaque type ResourceFilePath = String
@@ -23,21 +23,22 @@ object ResourceFilePath:
       case head :: Nil =>
         val base = Paths.get(head.toURI())
         val resources =
-          new File(base.toString()).list().map(fileName => fromPath(Path("/") / location / fileName)).toList
+          new File(base.toString()).list().map(fileName => s"/$location/$fileName").toList
         Expr(resources)
       case Nil => report.errorAndAbort(s"resource ${location} was not found")
       case multiple =>
         report.errorAndAbort(s"found multiple resource locations for ${location} in:\n${multiple.mkString("\n")}")
 
-  private def applyImpl(x: Expr[String])(using Quotes): Expr[ResourceFilePath] =
+  private def fromResource(x: Expr[String])(using Quotes): Expr[ResourceFilePath] =
     import quotes.reflect.report
     val location = x.valueOrAbort
     if getClass().getResourceAsStream(location) != null then x
     else report.errorAndAbort(s"resource ${location} was not found")
 
-  inline def apply(name: String): ResourceFilePath       = ${ applyImpl('name) }
-  inline private def fromPath(p: Path): ResourceFilePath = p.toString()
+  inline def fromResource(name: String): ResourceFilePath = ${ fromResource('name) }
+  def apply(name: String): ResourceFilePath               = name
 
   extension (s: ResourceFilePath)
-    inline def value: String    = s
-    inline def toNioPath: JPath = Paths.get(s)
+    inline def value: String                       = s
+    inline def append(p: String): ResourceFilePath = s + p
+    inline def fileName: String                    = Path(s).fileName.toString

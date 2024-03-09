@@ -6,7 +6,7 @@ package dumbo
 
 import java.io.File
 import java.net.URI
-import java.nio.file.{Path, Paths}
+import java.nio.file.Paths
 import java.util.zip.ZipFile
 
 import scala.jdk.CollectionConverters.*
@@ -18,7 +18,8 @@ import cats.implicits.*
 import dumbo.exception.*
 
 final case class ResourceFilePath(value: String) extends AnyVal {
-  def toNioPath: Path = Paths.get(value)
+  def fileName: String                    = Paths.get(value).getFileName.toString()
+  def append(p: String): ResourceFilePath = ResourceFilePath(value + p)
 }
 
 object ResourceFilePath {
@@ -33,7 +34,10 @@ object ResourceFilePath {
           Sync[F].delay {
             val base = Paths.get(url.toURI())
             val resources =
-              new File(base.toString()).list().map(fileName => apply(Paths.get("/", location, fileName))).toList
+              new File(base.toString())
+                .list()
+                .map(fileName => ResourceFilePath(s"/$location/$fileName"))
+                .toList
             resources
           },
         )
@@ -48,8 +52,6 @@ object ResourceFilePath {
         )
 
     }
-
-  def apply(p: Path): ResourceFilePath = ResourceFilePath(p.toString())
 
   private def listInJar[F[_]: Sync](jarUri: URI, location: String): F[List[ResourceFilePath]] =
     Resource.fromAutoCloseable {

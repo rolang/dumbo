@@ -1,1 +1,4 @@
--mem 2048
+-J-Xms2048m
+-J-Xmx2048m
+-J-XX:MaxMetaspaceSize=1024m
+-J-XX:MetaspaceSize=760m
