@@ -13,7 +13,7 @@ ThisBuild / licenses     := Seq(License.MIT)
 ThisBuild / developers := List(
   Developer(id = "rolang", name = "Roman Langolf", email = "rolang@pm.me", url = url("https://rolang.dev"))
 )
-ThisBuild / versionScheme := Some("semver-spec")
+ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / description   := "Simple database migration tool for Scala + Postgres"
 ThisBuild / homepage      := Some(url("https://github.com/rolang/dumbo"))
 
