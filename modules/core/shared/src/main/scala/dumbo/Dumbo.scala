@@ -179,7 +179,7 @@ class Dumbo[F[_]: Sync: Console](
       version = source.versionRaw,
       description = source.scriptDescription,
       `type` = "SQL",
-      script = source.path.fileName.toString,
+      script = source.path.fileName,
       checksum = Some(source.checksum),
       executionTimeMs = duration.toMillis.toInt,
       success = true,
@@ -310,7 +310,7 @@ class Dumbo[F[_]: Sync: Console](
                   |Migration checksum mismatch for migration version ${h.version}
                   |-> Applied to database : ${h.checksum.fold("null")(_.toString)}
                   |-> Resolved locally    : ${value.checksum}
-                  |Either revert the changes to the migration ${value.description.path.fileName} or update the checksum in $historyTable""".stripMargin
+                  |Either revert the changes to the migration ${value.description.fileName} or update the checksum in $historyTable""".stripMargin
             ).invalidNec[Unit]
 
           case Some(value) if value.scriptDescription != h.description =>
@@ -380,9 +380,9 @@ object Dumbo extends internal.DumboPlatform {
     fs: ResourceReader[F]
   ): Stream[F, Either[String, ResourceFile]] =
     fs.list
-      .filter(f => f.extName.endsWith(".sql") || f.extName.endsWith(".sql.conf"))
+      .filter(f => f.value.endsWith(".sql") || f.value.endsWith(".sql.conf"))
       .evalMap { path =>
-        val confPath = Path(path.toString + ".conf")
+        val confPath = path.append(".conf")
 
         fs.exists(confPath)
           .flatMap {
@@ -391,7 +391,7 @@ object Dumbo extends internal.DumboPlatform {
           }
           .flatMap {
             case Right(configs) =>
-              ResourceFileDescription.fromFilePath(path) match {
+              ResourceFileDescription.fromResourcePath(path) match {
                 case Right(desc) =>
                   for {
                     checksum <- checksum[F](path, fs)
@@ -409,7 +409,7 @@ object Dumbo extends internal.DumboPlatform {
 
   // implementation of checksum from Flyway
   // https://github.com/flyway/flyway/blob/main/flyway-core/src/main/java/org/flywaydb/core/internal/resolver/ChecksumCalculator.java#L59
-  private[dumbo] def checksum[F[_]: Sync](p: Path, fs: ResourceReader[F]): F[Int] =
+  private[dumbo] def checksum[F[_]: Sync](p: ResourceFilePath, fs: ResourceReader[F]): F[Int] =
     for {
       crc32 <- (new CRC32()).pure[F]
       _ <- fs.readUtf8Lines(p)

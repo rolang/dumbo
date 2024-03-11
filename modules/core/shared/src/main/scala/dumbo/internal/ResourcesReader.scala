@@ -13,13 +13,13 @@ import fs2.{Stream, text}
 private[dumbo] trait ResourceReader[F[_]] {
   def location: Option[String]
 
-  def list: fs2.Stream[F, Path]
+  def list: fs2.Stream[F, ResourceFilePath]
 
-  def readUtf8(path: Path): fs2.Stream[F, String]
+  def readUtf8(path: ResourceFilePath): fs2.Stream[F, String]
 
-  def readUtf8Lines(path: Path): fs2.Stream[F, String]
+  def readUtf8Lines(path: ResourceFilePath): fs2.Stream[F, String]
 
-  def exists(path: Path): F[Boolean]
+  def exists(path: ResourceFilePath): F[Boolean]
 }
 
 private[dumbo] object ResourceReader {
@@ -30,16 +30,18 @@ private[dumbo] object ResourceReader {
 
     new ResourceReader[F] {
       override val location: Option[String] = Some(absolutePath(sourceDir).toString)
-      override def list: Stream[F, Path] =
-        Fs2Files[F].list(absolutePath(sourceDir))
+      override def list: Stream[F, ResourceFilePath] =
+        Fs2Files[F]
+          .list(absolutePath(sourceDir))
+          .map(p => ResourceFilePath(p.toString))
 
-      override def readUtf8Lines(path: Path): Stream[F, String] =
-        Fs2Files[F].readUtf8Lines(absolutePath(path))
+      override def readUtf8Lines(path: ResourceFilePath): Stream[F, String] =
+        Fs2Files[F].readUtf8Lines(absolutePath(Path(path.value)))
 
-      override def readUtf8(path: Path): Stream[F, String] =
-        Fs2Files[F].readAll(absolutePath(path), 64 * 2048, Flags.Read).through(fs2.text.utf8.decode)
+      override def readUtf8(path: ResourceFilePath): Stream[F, String] =
+        Fs2Files[F].readAll(absolutePath(Path(path.value)), 64 * 2048, Flags.Read).through(fs2.text.utf8.decode)
 
-      override def exists(path: Path): F[Boolean] = Fs2Files[F].exists(absolutePath(path))
+      override def exists(path: ResourceFilePath): F[Boolean] = Fs2Files[F].exists(absolutePath(Path(path.value)))
     }
   }
 
@@ -50,19 +52,20 @@ private[dumbo] object ResourceReader {
     new ResourceReader[F] {
       override val location: Option[String] = locationInfo
 
-      override def list: Stream[F, Path] = Stream.evals(readResources).map(r => Path.fromNioPath(r.toNioPath))
+      override def list: Stream[F, ResourceFilePath] = Stream.evals(readResources)
 
-      override def readUtf8Lines(path: Path): Stream[F, String] = readUtf8(path).through(text.lines)
+      override def readUtf8Lines(path: ResourceFilePath): Stream[F, String] = readUtf8(path).through(text.lines)
 
-      override def readUtf8(path: Path): Stream[F, String] =
+      override def readUtf8(path: ResourceFilePath): Stream[F, String] =
         fs2.io
           .readInputStream(
-            Sync[F].delay(getClass().getResourceAsStream(path.toString)),
+            Sync[F].delay(getClass().getResourceAsStream(path.value)),
             64 * 2048,
             closeAfterUse = true,
           )
           .through(fs2.text.utf8.decode)
 
-      override def exists(path: Path): F[Boolean] = Sync[F].delay(getClass().getResourceAsStream(path.toString) != null)
+      override def exists(path: ResourceFilePath): F[Boolean] =
+        Sync[F].delay(getClass().getResourceAsStream(path.value) != null)
     }
 }

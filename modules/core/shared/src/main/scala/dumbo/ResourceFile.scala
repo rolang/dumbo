@@ -4,14 +4,11 @@
 
 package dumbo
 
-import java.nio.file.Path as JPath
-
 import scala.annotation.tailrec
 import scala.util.{Success, Try}
 
 import cats.data.NonEmptyList
 import cats.implicits.*
-import fs2.io.file.Path
 
 final case class ResourceFile(
   description: ResourceFileDescription,
@@ -21,7 +18,8 @@ final case class ResourceFile(
   def versionRaw: String           = description.version.raw
   def version: ResourceFileVersion = description.version
   def scriptDescription: String    = description.description
-  def path: Path                   = description.path
+  def path: ResourceFilePath       = description.path
+  def fileName: String             = description.path.fileName
 
   override def hashCode: Int = version.hashCode
 
@@ -78,7 +76,7 @@ object ResourceFileConfig {
 final case class ResourceFileDescription(
   version: ResourceFileVersion,
   description: String,
-  path: Path,
+  path: ResourceFilePath,
 ) extends Ordered[ResourceFileDescription] {
   def compare(that: ResourceFileDescription): Int = this.version.compare(that.version)
 
@@ -88,11 +86,12 @@ final case class ResourceFileDescription(
     case s: ResourceFileDescription => this.version.equals(s.version)
     case _                          => false
   }
+
+  def fileName: String = path.fileName
 }
 
 object ResourceFileDescription {
-  def fromNioPath(p: JPath): Either[String, ResourceFileDescription] = fromFilePath(Path.fromNioPath(p))
-  def fromFilePath(p: Path): Either[String, ResourceFileDescription] = {
+  def fromResourcePath(p: ResourceFilePath): Either[String, ResourceFileDescription] = {
     val pattern = "^V([^_]+)__(.+)\\.sql$".r
 
     p.fileName.toString match {

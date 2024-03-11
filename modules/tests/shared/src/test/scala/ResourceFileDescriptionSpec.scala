@@ -5,7 +5,6 @@
 package dumbo
 
 import cats.data.NonEmptyList
-import fs2.io.file.Path
 
 class ResourceFileDescriptionSpec extends ffstest.FTest {
   test("extract source file version from file path") {
@@ -25,7 +24,7 @@ class ResourceFileDescriptionSpec extends ffstest.FTest {
     )
 
     val (failures, versions) = fileNames
-      .map(s => ResourceFileDescription.fromFilePath(Path(s)))
+      .map(s => ResourceFileDescription.fromResourcePath(ResourceFilePath(s)))
       .partitionMap(r => r)
 
     assertEquals(failures, Nil)
@@ -58,7 +57,7 @@ class ResourceFileDescriptionSpec extends ffstest.FTest {
     )
 
     val versions = fileNames
-      .map(s => ResourceFileDescription.fromFilePath(Path(s)))
+      .map(s => ResourceFileDescription.fromResourcePath(ResourceFilePath(s)))
       .collect { case Right(r) => r }
 
     val versionsDistinct = versions.distinct
