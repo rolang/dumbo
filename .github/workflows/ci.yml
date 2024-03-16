@@ -103,8 +103,12 @@ jobs:
         if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-latest'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
+      - name: CLI test
+        if: matrix.project == 'rootNative' && (matrix.scala == '3')
+        run: sbt cliNative/test
+
       - name: Generate CLI native binary
-        if: matrix.project == 'rootNative'
+        if: matrix.project == 'rootNative' && (matrix.scala == '3')
         env:
           SCALANATIVE_MODE: release-fast
           SCALANATIVE_LTO: thin

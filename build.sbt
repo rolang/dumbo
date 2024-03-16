@@ -53,9 +53,15 @@ ThisBuild / githubWorkflowBuild := {
 }
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
+  commands = List("sbt cliNative/test"),
+  name = Some("CLI test"),
+  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
+)
+
+ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   commands = List("sbt buildCliBinary"),
   name = Some("Generate CLI native binary"),
-  cond = Some("matrix.project == 'rootNative'"),
+  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
   env = Map(
     "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
     "SCALANATIVE_LTO"  -> LTO.thin.toString(),
@@ -128,7 +134,7 @@ lazy val commonSettings = List(
 
 lazy val root = tlCrossRootProject
   .settings(name := "dumbo")
-  .aggregate(core, cli, tests, testsFlyway, example)
+  .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
 lazy val skunkVersion = "1.0.0-M4"
