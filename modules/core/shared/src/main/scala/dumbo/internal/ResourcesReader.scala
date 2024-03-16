@@ -48,6 +48,9 @@ private[dumbo] object ResourceReader {
     locationInfo: Option[String] = None,
   ): ResourceReader[F] =
     new ResourceReader[F] {
+      private def toResourcePath(p: Path) =
+        p.toString.split(java.io.File.separatorChar).filter(_.nonEmpty).mkString("/", "/", "")
+
       override val location: Option[String] = locationInfo
 
       override def list: Stream[F, Path] = Stream.evals(readResources).map(r => Path.fromNioPath(r.toNioPath))
@@ -57,12 +60,15 @@ private[dumbo] object ResourceReader {
       override def readUtf8(path: Path): Stream[F, String] =
         fs2.io
           .readInputStream(
-            Sync[F].delay(getClass().getResourceAsStream(path.toString)),
+            Sync[F].delay(
+              getClass().getResourceAsStream(toResourcePath(path))
+            ),
             64 * 2048,
             closeAfterUse = true,
           )
           .through(fs2.text.utf8.decode)
 
-      override def exists(path: Path): F[Boolean] = Sync[F].delay(getClass().getResourceAsStream(path.toString) != null)
+      override def exists(path: Path): F[Boolean] =
+        Sync[F].delay(getClass().getResourceAsStream(toResourcePath(path)) != null)
     }
 }
