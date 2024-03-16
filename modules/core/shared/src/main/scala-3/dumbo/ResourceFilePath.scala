@@ -4,10 +4,12 @@
 
 package dumbo
 
-import scala.quoted.*
-import scala.jdk.CollectionConverters.*
 import java.io.File
 import java.nio.file.Paths
+
+import scala.jdk.CollectionConverters.*
+import scala.quoted.*
+
 import fs2.io.file.Path
 
 opaque type ResourceFilePath = String

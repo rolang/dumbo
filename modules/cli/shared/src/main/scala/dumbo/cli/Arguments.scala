@@ -4,12 +4,14 @@
 
 package dumbo.cli
 
-import fs2.io.file.Path
 import java.net.URI
-import skunk.SSL
-import scala.util.Try
+
 import scala.annotation.tailrec
+import scala.util.Try
+
 import dumbo.Dumbo.defaults
+import fs2.io.file.Path
+import skunk.SSL
 
 final case class Arguments(
   commands: List[Command],

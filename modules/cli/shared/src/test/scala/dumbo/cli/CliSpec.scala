@@ -4,8 +4,8 @@
 
 package dumbo.cli
 
-import munit.FunSuite
 import dumbo.cli.Dumbo.dumboFromConfigs
+import munit.FunSuite
 
 class CliSpec extends FunSuite {
   val minValidConfig = List(

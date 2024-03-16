@@ -4,10 +4,10 @@
 
 package ffstest
 
-import munit.CatsEffectSuite
-import dumbo.{DumboWithResourcesPartiallyApplied, Dumbo}
-import fs2.io.file.Path
 import cats.effect.IO
+import dumbo.{Dumbo, DumboWithResourcesPartiallyApplied}
+import fs2.io.file.Path
+import munit.CatsEffectSuite
 
 trait FTestPlatform extends CatsEffectSuite {
   inline def dumboWithResources(path: String): DumboWithResourcesPartiallyApplied[IO] = Dumbo.withResourcesIn(path)
