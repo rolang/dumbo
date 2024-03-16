@@ -8,17 +8,17 @@ class ResourceFileConfigSpec extends ffstest.FTest {
   test("parse config file") {
     assertEquals(
       ResourceFileConfig.fromLines(List("executeInTransaction=true")),
-      Right[String, Set[ResourceFileConfig]](Set(ResourceFileConfig.ExecuteInTransaction(true))),
+      Right[String, Set[ResourceFileConfig]](Set(ResourceFileConfig.ExecuteInTransaction(value = true))),
     )
 
     assertEquals(
       ResourceFileConfig.fromLines(List("executeInTransaction=false")),
-      Right[String, Set[ResourceFileConfig]](Set(ResourceFileConfig.ExecuteInTransaction(false))),
+      Right[String, Set[ResourceFileConfig]](Set(ResourceFileConfig.ExecuteInTransaction(value = false))),
     )
 
     assertEquals(
       ResourceFileConfig.fromLines(List(" ", " executeInTransaction =  true ", "")),
-      Right[String, Set[ResourceFileConfig]](Set(ResourceFileConfig.ExecuteInTransaction(true))),
+      Right[String, Set[ResourceFileConfig]](Set(ResourceFileConfig.ExecuteInTransaction(value = true))),
     )
 
     assertEquals(

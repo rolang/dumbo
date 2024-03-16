@@ -245,7 +245,6 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
-    scalaVersion := `scala-3`,
     nativeConfig ~= {
       _.withEmbedResources(true)
     },
