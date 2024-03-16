@@ -21,8 +21,8 @@ import skunk.codec.all.bool
 import skunk.data.{Identifier, *}
 import skunk.net.SSLNegotiation
 import skunk.net.protocol.{Describe, Parse}
-import skunk.util.Typer.Strategy.{BuiltinsOnly, SearchPath}
 import skunk.util.*
+import skunk.util.Typer.Strategy.{BuiltinsOnly, SearchPath}
 import skunk.{Session as SkunkSession, *}
 
 // extension of skunk.Session to support any multi-query statements with discarded results

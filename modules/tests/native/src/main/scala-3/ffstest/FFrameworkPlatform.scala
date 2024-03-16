@@ -4,12 +4,11 @@
 
 package ffstest
 
+import cats.effect.IO
+import dumbo.{Dumbo, DumboWithResourcesPartiallyApplied}
 import epollcat.unsafe.EpollRuntime
 import fs2.io.file.Path
 import munit.CatsEffectSuite
-import dumbo.DumboWithResourcesPartiallyApplied
-import cats.effect.IO
-import dumbo.Dumbo
 
 trait FTestPlatform extends CatsEffectSuite {
   override def munitIORuntime = EpollRuntime.global

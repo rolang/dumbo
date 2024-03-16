@@ -4,16 +4,14 @@
 
 package dumbo.cli
 
-import cats.effect.IO
-import cats.effect.ExitCode
+import cats.data.Validated.{Invalid, Valid}
+import cats.effect.std.Console
+import cats.effect.{ExitCode, IO}
+import dumbo.BuildInfo
+import dumbo.Dumbo.defaults
+import dumbo.exception.DumboValidationException
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.SSL
-import cats.effect.std.Console
-import dumbo.exception.DumboValidationException
-import cats.data.Validated.Valid
-import cats.data.Validated.Invalid
-import dumbo.Dumbo.defaults
-import dumbo.BuildInfo
 
 object Dumbo extends dumbo.internal.PlatformApp {
   private def printHelp(cmd: Option[Command] = None) = {

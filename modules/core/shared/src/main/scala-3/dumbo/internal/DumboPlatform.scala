@@ -5,8 +5,7 @@
 package dumbo.internal
 
 import cats.effect.Sync
-import dumbo.ResourceFilePath
-import dumbo.DumboWithResourcesPartiallyApplied
+import dumbo.{DumboWithResourcesPartiallyApplied, ResourceFilePath}
 
 private[dumbo] trait DumboPlatform {
   inline def withResourcesIn[F[_]: Sync](location: String): DumboWithResourcesPartiallyApplied[F] = {

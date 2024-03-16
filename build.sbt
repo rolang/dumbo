@@ -1,7 +1,7 @@
 import scala.scalanative.build.*
 
-lazy val `scala-2.13` = "2.13.12"
-lazy val `scala-3`    = "3.3.1"
+lazy val `scala-2.13` = "2.13.13"
+lazy val `scala-3`    = "3.3.3"
 
 ThisBuild / tlBaseVersion      := "0.2"
 ThisBuild / startYear          := Some(2023)
@@ -17,11 +17,10 @@ ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / description   := "Simple database migration tool for Scala + Postgres"
 ThisBuild / homepage      := Some(url("https://github.com/rolang/dumbo"))
 
-ThisBuild / scalafmt                   := true
-ThisBuild / scalafmtSbtCheck           := true
-ThisBuild / semanticdbEnabled          := true
-ThisBuild / semanticdbVersion          := scalafixSemanticdb.revision // use Scalafix compatible version
-ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(`scala-2.13`)
+ThisBuild / scalafmt          := true
+ThisBuild / scalafmtSbtCheck  := true
+ThisBuild / semanticdbEnabled := true
+ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
@@ -49,7 +48,7 @@ ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
     List("scalafixAll --check"),
     name = Some("Check scalafix lints"),
-    cond = Some("(matrix.project == 'rootJVM') && (matrix.scala == '2.13')"),
+    cond = Some("matrix.java == 'temurin@21' && (matrix.scala == '3')"),
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
 
@@ -140,7 +139,7 @@ lazy val skunkVersion = "1.0.0-M4"
 
 lazy val epollcatVersion = "0.1.6"
 
-lazy val munitVersion = "1.0.0-M10"
+lazy val munitVersion = "1.0.0-M11"
 
 lazy val munitCEVersion = "2.0.0-M4"
 
@@ -250,8 +249,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "10.6.0"
-lazy val postgresqlVersion = "42.7.1"
+lazy val flywayVersion     = "10.10.0"
+lazy val postgresqlVersion = "42.7.3"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
   .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
