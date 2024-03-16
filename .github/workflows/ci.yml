@@ -84,7 +84,7 @@ jobs:
 
       - name: Check scalafix lints
         if: matrix.java == 'temurin@21' && (matrix.scala == '3')
-        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'scalafixAll --check'
+        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'Test/copyResources; scalafixAll --check'
 
       - name: Check headers and formatting
         if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-latest'

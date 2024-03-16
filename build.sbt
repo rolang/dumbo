@@ -46,7 +46,7 @@ ThisBuild / githubWorkflowJobSetup ++= Seq(
 )
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
-    List("scalafixAll --check"),
+    List("Test/copyResources; scalafixAll --check"),
     name = Some("Check scalafix lints"),
     cond = Some("matrix.java == 'temurin@21' && (matrix.scala == '3')"),
   ) +: (ThisBuild / githubWorkflowBuild).value
