@@ -4,8 +4,9 @@
 
 package dumbo
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.Paths
 
 final case class ResourceFilePath(value: String) extends AnyVal {
-  def toNioPath: Path = Paths.get(value)
+  def fileName: String                    = Paths.get(value).getFileName.toString()
+  def append(p: String): ResourceFilePath = ResourceFilePath(value + p)
 }

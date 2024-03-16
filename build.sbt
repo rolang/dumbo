@@ -53,9 +53,15 @@ ThisBuild / githubWorkflowBuild := {
 }
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
+  commands = List("sbt cliNative/test"),
+  name = Some("CLI test"),
+  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
+)
+
+ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   commands = List("sbt buildCliBinary"),
   name = Some("Generate CLI native binary"),
-  cond = Some("matrix.project == 'rootNative'"),
+  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
   env = Map(
     "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
     "SCALANATIVE_LTO"  -> LTO.thin.toString(),
@@ -94,10 +100,6 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   cond = Some("matrix.project == 'rootJVM'"),
 )
 
-ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
-  MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.13"))
-)
-
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("fix", "; all scalafixAll; all scalafmtSbt scalafmtAll")
 addCommandAlias("check", "; scalafmtSbtCheck; scalafmtCheckAll; scalafixAll --check")
@@ -132,7 +134,7 @@ lazy val commonSettings = List(
 
 lazy val root = tlCrossRootProject
   .settings(name := "dumbo")
-  .aggregate(core, cli, tests, testsFlyway, example)
+  .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
 lazy val skunkVersion = "1.0.0-M4"
@@ -243,7 +245,6 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
-    scalaVersion := `scala-3`,
     nativeConfig ~= {
       _.withEmbedResources(true)
     },

@@ -2,6 +2,8 @@
 
 [![Sonatype Releases](https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.rolang/dumbo_3.svg?label=Sonatype%20Release)](https://oss.sonatype.org/content/repositories/releases/dev/rolang/dumbo_3/)
 [![Sonatype Snapshots](https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.rolang/dumbo_3.svg?label=Sonatype%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/dev/rolang/dumbo_3/)
+[![dumbo Scala version support](https://index.scala-lang.org/rolang/dumbo/dumbo/latest-by-scala-version.svg?platform=native0.4)](https://index.scala-lang.org/rolang/dumbo/dumbo)
+[![dumbo Scala version support](https://index.scala-lang.org/rolang/dumbo/dumbo/latest-by-scala-version.svg?platform=jvm)](https://index.scala-lang.org/rolang/dumbo/dumbo)
 
 ![Logo](./docs/assets/logo.png)
 

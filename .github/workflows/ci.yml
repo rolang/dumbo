@@ -36,8 +36,6 @@ jobs:
             java: temurin@17
           - project: rootNative
             java: temurin@17
-          - project: rootNative
-            scala: 2.13
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -105,8 +103,12 @@ jobs:
         if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-latest'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
+      - name: CLI test
+        if: matrix.project == 'rootNative' && (matrix.scala == '3')
+        run: sbt cliNative/test
+
       - name: Generate CLI native binary
-        if: matrix.project == 'rootNative'
+        if: matrix.project == 'rootNative' && (matrix.scala == '3')
         env:
           SCALANATIVE_MODE: release-fast
           SCALANATIVE_LTO: thin
@@ -205,6 +207,16 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
+      - name: Download target directories (2.13, rootNative)
+        uses: actions/download-artifact@v4
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13-rootNative
+
+      - name: Inflate target directories (2.13, rootNative)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
       - name: Import signing key
         if: env.PGP_SECRET != '' && env.PGP_PASSPHRASE == ''
         env:
@@ -294,5 +306,5 @@ jobs:
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
         with:
-          modules-ignore: dumbo_3 dumbo_2.13 testsflyway_3 testsflyway_2.13 dumbo_3 dumbo_2.13 dumbo_3 dumbo_2.13 tests_3 tests_2.13 example_3 example_2.13 tests_native0.4_3
+          modules-ignore: dumbo_3 dumbo_2.13 testsflyway_3 testsflyway_2.13 dumbo_3 dumbo_2.13 dumbo_3 dumbo_2.13 tests_3 tests_2.13 example_3 example_2.13 tests_native0.4_3 tests_native0.4_2.13
           configs-ignore: test scala-tool scala-doc-tool test-internal
