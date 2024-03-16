@@ -94,10 +94,6 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   cond = Some("matrix.project == 'rootJVM'"),
 )
 
-ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
-  MatrixExclude(Map("project" -> "rootNative", "scala" -> "2.13"))
-)
-
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
 addCommandAlias("fix", "; all scalafixAll; all scalafmtSbt scalafmtAll")
 addCommandAlias("check", "; scalafmtSbtCheck; scalafmtCheckAll; scalafixAll --check")
