@@ -59,8 +59,8 @@ object ResourceFileConfig {
       .filter(_.trim().nonEmpty)
       .map(_.split("=").map(_.trim()).toList)
       .flatTraverse {
-        case `txn` :: "false" :: Nil => List(ExecuteInTransaction(false)).asRight[String]
-        case `txn` :: "true" :: Nil  => List(ExecuteInTransaction(true)).asRight[String]
+        case `txn` :: "false" :: Nil => List(ExecuteInTransaction(value = false)).asRight[String]
+        case `txn` :: "true" :: Nil  => List(ExecuteInTransaction(value = true)).asRight[String]
         case `txn` :: v              => invalidBoolean(txn, v.mkString("="))
         case unknown :: _            => unknownProperty(unknown)
         case Nil                     => Nil.asRight[String]

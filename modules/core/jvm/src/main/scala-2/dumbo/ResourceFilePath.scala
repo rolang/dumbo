@@ -14,7 +14,6 @@ import scala.util.{Failure, Success, Try}
 
 import cats.effect.Resource
 import cats.effect.kernel.Sync
-import cats.implicits.*
 import dumbo.exception.*
 
 final case class ResourceFilePath(value: String) extends AnyVal {
