@@ -278,3 +278,20 @@ lazy val example = project
     publish / skip       := true,
     scalacOptions -= "-Werror",
   )
+
+lazy val exampleLog4Cats = project
+  .in(file("modules/example-log4cats"))
+  .enablePlugins(NoPublishPlugin)
+  .dependsOn(core.jvm)
+  .settings(commonSettings)
+  .settings(
+    Compile / run / fork := true,
+    publish / skip       := true,
+    scalacOptions -= "-Werror",
+    scalaVersion       := `scala-3`,
+    crossScalaVersions := Seq(),
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "log4cats-slf4j"  % "2.6.0",
+      "ch.qos.logback" % "logback-classic" % "1.2.13",
+    ),
+  )
