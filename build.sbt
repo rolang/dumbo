@@ -99,8 +99,8 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   name = Some("Generate CLI native binary"),
   cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
   env = Map(
-    "SCALANATIVE_MODE" -> Mode.releaseFast.toString()
-    // "SCALANATIVE_LTO"  -> LTO.thin.toString(), // breaks on macOS
+    "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
+    "SCALANATIVE_LTO"  -> LTO.thin.toString(),
   ),
 )
 
@@ -219,7 +219,6 @@ lazy val cli = crossProject(NativePlatform)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     nativeBrewFormulas ++= brewFormulas,
-    nativeConfig ~= { _.withCompileOptions(Seq("-v")) },
   )
 
 lazy val cliNative      = cli.native
