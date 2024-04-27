@@ -23,7 +23,7 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
-ThisBuild / githubWorkflowOSes := Seq("ubuntu-24.04", "macos-12", "macos-14")
+ThisBuild / githubWorkflowOSes ++= Seq("macos-12", "macos-14")
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
   MatrixExclude(Map("os" -> "macos-12", "project" -> "rootJVM")),
   MatrixExclude(Map("os" -> "macos-14", "project" -> "rootJVM")),
@@ -46,7 +46,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= Seq(
 )
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List(s"brew install ${brewFormulas.mkString(" ")} && clang --version"),
+    commands = List(s"brew install llvm@17 ${brewFormulas.mkString(" ")} && clang --version"),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'macos')"),
     name = Some("Install native dependencies (macos)"),
   )
