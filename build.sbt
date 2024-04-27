@@ -23,6 +23,11 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
+ThisBuild / githubWorkflowOSes ++= Seq("macos-12", "macos-14")
+ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
+  MatrixExclude(Map("os" -> "macos-12", "project" -> "rootJVM")),
+  MatrixExclude(Map("os" -> "macos-14", "project" -> "rootJVM")),
+)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
@@ -38,18 +43,41 @@ ThisBuild / githubWorkflowBuildPreamble ++= Seq(
     name = Some("Install native dependencies (ubuntu)"),
   )
 )
+ThisBuild / githubWorkflowBuildPreamble ++= Seq(
+  WorkflowStep.Run(
+    commands = List(s"brew install llvm ${brewFormulas.mkString(" ")}"),
+    cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'macos')"),
+    name = Some("Install native dependencies (macos)"),
+  )
+)
 ThisBuild / githubWorkflowJobSetup ++= Seq(
   WorkflowStep.Run(
     commands = List("docker-compose up -d"),
     name = Some("Start up Postgres"),
+    cond = Some("startsWith(matrix.os, 'ubuntu')"),
   )
 )
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
-    List("Test/copyResources; scalafixAll --check"),
-    name = Some("Check scalafix lints"),
-    cond = Some("matrix.java == 'temurin@21' && (matrix.scala == '3')"),
+    List("Test/copyResources; check"),
+    name = Some("Check scalafix/scalafmt lints"),
+    cond = Some(
+      "matrix.java == 'temurin@21' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')"
+    ),
   ) +: (ThisBuild / githubWorkflowBuild).value
+}
+
+// override Test step to run on ubuntu only due to requirement of docker
+ThisBuild / githubWorkflowBuild := {
+  (ThisBuild / githubWorkflowBuild).value.map {
+    case s if s.name.contains("Test") =>
+      WorkflowStep.Sbt(
+        List("test"),
+        name = Some("Test"),
+        cond = Some("startsWith(matrix.os, 'ubuntu')"),
+      )
+    case s => s
+  }
 }
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
