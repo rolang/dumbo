@@ -89,7 +89,7 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
 ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   commands = List("sbt buildCliBinary"),
   name = Some("Generate CLI native binary"),
-  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
+  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3') && matrix.os != 'macos-14'"),
   env = Map(
     "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
     "SCALANATIVE_LTO"  -> LTO.thin.toString(),

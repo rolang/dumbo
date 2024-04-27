@@ -122,7 +122,7 @@ jobs:
         run: sbt cliNative/test
 
       - name: Generate CLI native binary
-        if: matrix.project == 'rootNative' && (matrix.scala == '3')
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && matrix.os != 'macos-14'
         env:
           SCALANATIVE_MODE: release-fast
           SCALANATIVE_LTO: thin
