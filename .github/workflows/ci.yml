@@ -89,13 +89,13 @@ jobs:
           echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@17/bin" >> $GITHUB_ENV
 
       - name: Install native dependencies (macos-12)
-        if: (matrix.project == 'rootNative') && matrix.os == macos-12)
+        if: (matrix.project == 'rootNative') && matrix.os == 'macos-12')
         run: |
           brew install llvm@17 s2n utf8proc
           echo "LLVM_BIN=/usr/local/opt/llvm@17/bin" >> $GITHUB_ENV
 
       - name: Install native dependencies (macos-14)
-        if: (matrix.project == 'rootNative') && matrix.os == macos-14)
+        if: (matrix.project == 'rootNative') && matrix.os == 'macos-14')
         run: |
           brew install llvm@17 s2n utf8proc
           echo "LLVM_BIN=/opt/homebrew/opt/llvm@17/bin" >> $GITHUB_ENV

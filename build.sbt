@@ -54,7 +54,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= List(
       s"brew install llvm@$llvmVersion ${brewFormulas.mkString(" ")}",
       s"""echo "LLVM_BIN=$llvmBase/llvm@$llvmVersion/bin" >> $$GITHUB_ENV""",
     ),
-    cond = Some(s"(matrix.project == 'rootNative') && matrix.os == $os)"),
+    cond = Some(s"(matrix.project == 'rootNative') && matrix.os == '$os')"),
     name = Some(s"Install native dependencies ($os)"),
   )
 }
