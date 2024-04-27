@@ -219,6 +219,7 @@ lazy val cli = crossProject(NativePlatform)
   .nativeSettings(
     libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     nativeBrewFormulas ++= brewFormulas,
+    nativeConfig ~= { _.withCompileOptions(Seq("-v")) },
   )
 
 lazy val cliNative      = cli.native
