@@ -32,25 +32,32 @@ ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.t
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
+lazy val llvmVersion  = "17"
 lazy val brewFormulas = Set("s2n", "utf8proc")
 
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
     commands = List(
-      s"sudo apt-get update && sudo apt-get install clang && clang --version && /home/linuxbrew/.linuxbrew/bin/brew install ${brewFormulas
-          .mkString(" ")}"
+      s"/home/linuxbrew/.linuxbrew/bin/brew install llvm@$llvmVersion ${brewFormulas.mkString(" ")}",
+      s"""echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@$llvmVersion/bin" >> $$GITHUB_ENV""",
     ),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
 )
-ThisBuild / githubWorkflowBuildPreamble ++= Seq(
+ThisBuild / githubWorkflowBuildPreamble ++= List(
+  "macos-12" -> "/usr/local/opt",
+  "macos-14" -> "/opt/homebrew/opt",
+).map { case (os, llvmBase) =>
   WorkflowStep.Run(
-    commands = List(s"brew install llvm@17 ${brewFormulas.mkString(" ")} && clang --version"),
-    cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'macos')"),
-    name = Some("Install native dependencies (macos)"),
+    commands = List(
+      s"brew install llvm@$llvmVersion ${brewFormulas.mkString(" ")}",
+      s"""echo "LLVM_BIN=$llvmBase/llvm@$llvmVersion/bin" >> $$GITHUB_ENV""",
+    ),
+    cond = Some(s"(matrix.project == 'rootNative') && matrix.os == $os)"),
+    name = Some(s"Install native dependencies ($os)"),
   )
-)
+}
 ThisBuild / githubWorkflowJobSetup ++= Seq(
   WorkflowStep.Run(
     commands = List("docker-compose up -d"),
