@@ -94,15 +94,17 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
 )
 
-ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
-  commands = List("sbt buildCliBinary"),
-  name = Some("Generate CLI native binary"),
-  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
-  env = Map(
-    "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
-    "SCALANATIVE_LTO"  -> LTO.thin.toString(),
-  ),
-)
+ThisBuild / githubWorkflowBuild ++= List(
+  "ubuntu" -> Map("SCALANATIVE_LTO" -> LTO.thin.toString()),
+  "macos"  -> Map.empty,
+).map { case (os, envs) =>
+  WorkflowStep.Run(
+    commands = List("sbt buildCliBinary"),
+    name = Some(s"Generate CLI native binary ($os)"),
+    cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, '$os')"),
+    env = Map("SCALANATIVE_MODE" -> Mode.releaseFast.toString()) ++ envs,
+  )
+}
 
 ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
   ref = UseRef.Public("softprops", "action-gh-release", "v1"),
