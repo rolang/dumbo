@@ -23,7 +23,7 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
-ThisBuild / githubWorkflowOSes ++= Seq("macos-12", "macos-14")
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-24.04", "macos-12", "macos-14")
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
   MatrixExclude(Map("os" -> "macos-12", "project" -> "rootJVM")),
   MatrixExclude(Map("os" -> "macos-14", "project" -> "rootJVM")),
@@ -37,7 +37,8 @@ lazy val brewFormulas = Set("s2n", "utf8proc")
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
     commands = List(
-      s"sudo apt-get update && sudo apt-get install clang && /home/linuxbrew/.linuxbrew/bin/brew install ${brewFormulas.mkString(" ")}"
+      s"sudo apt-get update && sudo apt-get install clang && clang --version && /home/linuxbrew/.linuxbrew/bin/brew install ${brewFormulas
+          .mkString(" ")}"
     ),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
@@ -45,7 +46,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= Seq(
 )
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
-    commands = List(s"brew install llvm ${brewFormulas.mkString(" ")}"),
+    commands = List(s"brew install ${brewFormulas.mkString(" ")} && clang --version"),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'macos')"),
     name = Some("Install native dependencies (macos)"),
   )
@@ -92,7 +93,7 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
   env = Map(
     "SCALANATIVE_MODE" -> Mode.releaseFast.toString()
-    // "SCALANATIVE_LTO"  -> LTO.thin.toString(),
+    // "SCALANATIVE_LTO"  -> LTO.thin.toString(), // breaks on macOS
   ),
 )
 
