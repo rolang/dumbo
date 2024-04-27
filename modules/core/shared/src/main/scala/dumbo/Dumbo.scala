@@ -16,16 +16,16 @@ import cats.effect.std.Console
 import cats.effect.{Async, Resource, Sync, Temporal}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
-import dumbo.internal.{ResourceReader, Session as DumboSession, Statements}
+import dumbo.internal.{ResourceReader, Statements}
 import fs2.Stream
 import fs2.io.file.*
 import fs2.io.net.Network
 import org.typelevel.otel4s.trace.Tracer
+import skunk.*
 import skunk.codec.all.*
 import skunk.data.Completion
 import skunk.implicits.*
 import skunk.util.{Origin, Typer}
-import skunk.{Session as SkunkSession, *}
 
 final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) {
   def apply(
@@ -109,9 +109,9 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String],
   )(implicit T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]) = {
     val searchPath = (schemas + defaultSchema).mkString(",")
-    val params     = SkunkSession.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
+    val params     = Session.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
 
-    DumboSession.single[F](
+    Session.single[F](
       host = connection.host,
       port = connection.port,
       user = connection.user,
@@ -126,7 +126,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
 
 class Dumbo[F[_]: Sync: Console](
   private[dumbo] val resReader: ResourceReader[F],
-  sessionResource: Resource[F, DumboSession[F]],
+  sessionResource: Resource[F, Session[F]],
   private[dumbo] val connection: ConnectionConfig,
   defaultSchema: String,
   schemas: Set[String],
@@ -142,7 +142,7 @@ class Dumbo[F[_]: Sync: Console](
 
   private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${schema}".command
 
-  private def transact(source: ResourceFile, fs: ResourceReader[F], session: DumboSession[F]): F[HistoryEntry.New] =
+  private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] =
     for {
       _ <-
         Console[F].println(
@@ -172,7 +172,7 @@ class Dumbo[F[_]: Sync: Console](
                                  Statement.CacheKey(statementSql, encoder.types, Nil)
                              }
                            )
-                           .traverse_(session.execute_(_))
+                           .traverse_(session.executeDiscard(_))
                        }
       _ <- Console[F].println(s"Migration to version ${source.versionRaw} - ${source.scriptDescription} completed")
     } yield HistoryEntry.New(
@@ -185,7 +185,7 @@ class Dumbo[F[_]: Sync: Console](
       success = true,
     )
 
-  private def validationGuard(session: DumboSession[F], sourceFiles: List[ResourceFile]) =
+  private def validationGuard(session: Session[F], sourceFiles: List[ResourceFile]) =
     if (sourceFiles.nonEmpty) {
       session
         .execute(dumboHistory.loadAllQuery)
@@ -199,7 +199,7 @@ class Dumbo[F[_]: Sync: Console](
     } else ().pure[F]
 
   private def migrateToNext(
-    session: DumboSession[F],
+    session: Session[F],
     fs: ResourceReader[F],
   )(sourceFiles: List[ResourceFile]): F[Option[(HistoryEntry, List[ResourceFile])]] =
     sourceFiles match {
@@ -215,7 +215,7 @@ class Dumbo[F[_]: Sync: Console](
             result <- sourceFiles.dropWhile(s => latestInstalled.exists(s.version <= _)) match {
                         case head :: tail =>
                           // acquire a new session for non-transactional operation
-                          val transactSession: Resource[F, DumboSession[F]] =
+                          val transactSession: Resource[F, Session[F]] =
                             if (head.executeInTransaction) Resource.pure(session) else sessionResource
 
                           transactSession
@@ -241,7 +241,7 @@ class Dumbo[F[_]: Sync: Console](
 
   def runMigration: F[MigrationResult] = sessionResource.use(migrateBySession)
 
-  private def migrateBySession(session: DumboSession[F]): F[Dumbo.MigrationResult] = for {
+  private def migrateBySession(session: Session[F]): F[Dumbo.MigrationResult] = for {
     schemaRes <-
       allSchemas.toList
         .flatTraverse(schema =>

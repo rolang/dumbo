@@ -1,4 +1,3 @@
-version: "3.3"
 services:
   pg_1:
     image: postgres:15-alpine

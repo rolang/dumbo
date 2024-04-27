@@ -3,7 +3,7 @@ import scala.scalanative.build.*
 lazy val `scala-2.13` = "2.13.13"
 lazy val `scala-3`    = "3.3.3"
 
-ThisBuild / tlBaseVersion      := "0.2"
+ThisBuild / tlBaseVersion      := "0.3"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
@@ -137,7 +137,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
-lazy val skunkVersion = "1.0.0-M4"
+lazy val skunkVersion = "1.0.0-M5"
 
 lazy val epollcatVersion = "0.1.6"
 
@@ -250,7 +250,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "10.10.0"
+lazy val flywayVersion     = "10.11.1"
 lazy val postgresqlVersion = "42.7.3"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
