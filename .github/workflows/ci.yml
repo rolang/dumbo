@@ -136,12 +136,13 @@ jobs:
         env:
           SCALANATIVE_MODE: release-fast
           SCALANATIVE_LTO: thin
-        run: |
-          sbt buildCliBinary
-          cp -r modules/cli/native/target/bin docker-build/bin
-          docker build ./docker-build -t rolang/dumbo:0.3.x-test
-          docker run rolang/dumbo:0.3.x-test -fail
-          echo "should not display as previous step failed"
+        run: sbt buildCliBinary
+
+      - name: Generate CLI native binary (macos)
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'macos')
+        env:
+          SCALANATIVE_MODE: release-fast
+        run: sbt buildCliBinary
 
       - name: Run example (covers reading resources from a jar)
         if: matrix.project == 'rootJVM'
@@ -290,7 +291,7 @@ jobs:
           export RELEASE_TAG=${GITHUB_REF_NAME#'v'}
           cp -r modules/cli/native/target/bin docker-build/bin
           docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine
-          docker run rolang/dumbo:${RELEASE_TAG}-alpine -v
+          docker run rolang/dumbo:${RELEASE_TAG}-alpine
           docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine
           docker push rolang/dumbo:${RELEASE_TAG}-alpine
           docker push rolang/dumbo:latest-alpine
