@@ -23,33 +23,69 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
+ThisBuild / githubWorkflowOSes ++= Seq("macos-12", "macos-14")
+ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
+  MatrixExclude(Map("os" -> "macos-12", "project" -> "rootJVM")),
+  MatrixExclude(Map("os" -> "macos-14", "project" -> "rootJVM")),
+)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
+lazy val llvmVersion  = "17"
 lazy val brewFormulas = Set("s2n", "utf8proc")
 
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
     commands = List(
-      s"sudo apt-get update && sudo apt-get install clang && /home/linuxbrew/.linuxbrew/bin/brew install ${brewFormulas.mkString(" ")}"
+      s"/home/linuxbrew/.linuxbrew/bin/brew install llvm@$llvmVersion ${brewFormulas.mkString(" ")}",
+      s"""echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@$llvmVersion/bin" >> $$GITHUB_ENV""",
     ),
     cond = Some("(matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')"),
     name = Some("Install native dependencies (ubuntu)"),
   )
 )
+ThisBuild / githubWorkflowBuildPreamble ++= List(
+  "macos-12" -> "/usr/local/opt",
+  "macos-14" -> "/opt/homebrew/opt",
+).map { case (os, llvmBase) =>
+  WorkflowStep.Run(
+    commands = List(
+      s"brew install llvm@$llvmVersion ${brewFormulas.mkString(" ")}",
+      s"""echo "LLVM_BIN=$llvmBase/llvm@$llvmVersion/bin" >> $$GITHUB_ENV""",
+    ),
+    cond = Some(s"(matrix.project == 'rootNative') && matrix.os == '$os'"),
+    name = Some(s"Install native dependencies ($os)"),
+  )
+}
 ThisBuild / githubWorkflowJobSetup ++= Seq(
   WorkflowStep.Run(
     commands = List("docker-compose up -d"),
     name = Some("Start up Postgres"),
+    cond = Some("startsWith(matrix.os, 'ubuntu')"),
   )
 )
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
-    List("Test/copyResources; scalafixAll --check"),
-    name = Some("Check scalafix lints"),
-    cond = Some("matrix.java == 'temurin@21' && (matrix.scala == '3')"),
+    List("Test/copyResources; check"),
+    name = Some("Check scalafix/scalafmt lints"),
+    cond = Some(
+      "matrix.java == 'temurin@21' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')"
+    ),
   ) +: (ThisBuild / githubWorkflowBuild).value
+}
+
+// override Test step to run on ubuntu only due to requirement of docker
+ThisBuild / githubWorkflowBuild := {
+  (ThisBuild / githubWorkflowBuild).value.map {
+    case s if s.name.contains("Test") =>
+      WorkflowStep.Sbt(
+        List("test"),
+        name = Some("Test"),
+        cond = Some("startsWith(matrix.os, 'ubuntu')"),
+      )
+    case s => s
+  }
 }
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
@@ -58,15 +94,17 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
 )
 
-ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
-  commands = List("sbt buildCliBinary"),
-  name = Some("Generate CLI native binary"),
-  cond = Some("matrix.project == 'rootNative' && (matrix.scala == '3')"),
-  env = Map(
-    "SCALANATIVE_MODE" -> Mode.releaseFast.toString(),
-    "SCALANATIVE_LTO"  -> LTO.thin.toString(),
-  ),
-)
+ThisBuild / githubWorkflowBuild ++= List(
+  "ubuntu" -> Map("SCALANATIVE_LTO" -> LTO.thin.toString()),
+  "macos"  -> Map.empty,
+).map { case (os, envs) =>
+  WorkflowStep.Run(
+    commands = List("sbt buildCliBinary"),
+    name = Some(s"Generate CLI native binary ($os)"),
+    cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, '$os')"),
+    env = Map("SCALANATIVE_MODE" -> Mode.releaseFast.toString()) ++ envs,
+  )
+}
 
 ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
   ref = UseRef.Public("softprops", "action-gh-release", "v1"),

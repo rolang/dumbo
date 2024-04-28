@@ -27,7 +27,7 @@ jobs:
     name: Build and Test
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-12, macos-14]
         scala: [3, 2.13]
         java: [temurin@21, temurin@17]
         project: [rootJVM, rootNative]
@@ -36,9 +36,17 @@ jobs:
             java: temurin@17
           - project: rootNative
             java: temurin@17
+          - os: macos-12
+            project: rootJVM
+          - os: macos-14
+            project: rootJVM
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
+      - name: Install sbt
+        if: contains(runner.os, 'macos')
+        run: brew install sbt
+
       - name: Checkout current branch (full)
         uses: actions/checkout@v4
         with:
@@ -71,18 +79,33 @@ jobs:
         run: sbt +update
 
       - name: Start up Postgres
+        if: startsWith(matrix.os, 'ubuntu')
         run: docker-compose up -d
 
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
-        run: sudo apt-get update && sudo apt-get install clang && /home/linuxbrew/.linuxbrew/bin/brew install s2n utf8proc
+        run: |
+          /home/linuxbrew/.linuxbrew/bin/brew install llvm@17 s2n utf8proc
+          echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@17/bin" >> $GITHUB_ENV
+
+      - name: Install native dependencies (macos-12)
+        if: (matrix.project == 'rootNative') && matrix.os == 'macos-12'
+        run: |
+          brew install llvm@17 s2n utf8proc
+          echo "LLVM_BIN=/usr/local/opt/llvm@17/bin" >> $GITHUB_ENV
+
+      - name: Install native dependencies (macos-14)
+        if: (matrix.project == 'rootNative') && matrix.os == 'macos-14'
+        run: |
+          brew install llvm@17 s2n utf8proc
+          echo "LLVM_BIN=/opt/homebrew/opt/llvm@17/bin" >> $GITHUB_ENV
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
 
-      - name: Check scalafix lints
-        if: matrix.java == 'temurin@21' && (matrix.scala == '3')
-        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'Test/copyResources; scalafixAll --check'
+      - name: Check scalafix/scalafmt lints
+        if: matrix.java == 'temurin@21' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')
+        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'Test/copyResources; check'
 
       - name: Check headers and formatting
         if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-latest'
@@ -93,6 +116,7 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' Test/nativeLink
 
       - name: Test
+        if: startsWith(matrix.os, 'ubuntu')
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' test
 
       - name: Check binary compatibility
@@ -107,11 +131,17 @@ jobs:
         if: matrix.project == 'rootNative' && (matrix.scala == '3')
         run: sbt cliNative/test
 
-      - name: Generate CLI native binary
-        if: matrix.project == 'rootNative' && (matrix.scala == '3')
+      - name: Generate CLI native binary (ubuntu)
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'ubuntu')
         env:
           SCALANATIVE_MODE: release-fast
           SCALANATIVE_LTO: thin
+        run: sbt buildCliBinary
+
+      - name: Generate CLI native binary (macos)
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'macos')
+        env:
+          SCALANATIVE_MODE: release-fast
         run: sbt buildCliBinary
 
       - name: Run example (covers reading resources from a jar)
@@ -143,6 +173,10 @@ jobs:
         java: [temurin@21]
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Install sbt
+        if: contains(runner.os, 'macos')
+        run: brew install sbt
+
       - name: Checkout current branch (full)
         uses: actions/checkout@v4
         with:
@@ -175,6 +209,7 @@ jobs:
         run: sbt +update
 
       - name: Start up Postgres
+        if: startsWith(matrix.os, 'ubuntu')
         run: docker-compose up -d
 
       - name: Download target directories (3, rootJVM)
@@ -269,6 +304,10 @@ jobs:
         java: [temurin@21]
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Install sbt
+        if: contains(runner.os, 'macos')
+        run: brew install sbt
+
       - name: Checkout current branch (full)
         uses: actions/checkout@v4
         with:
@@ -301,6 +340,7 @@ jobs:
         run: sbt +update
 
       - name: Start up Postgres
+        if: startsWith(matrix.os, 'ubuntu')
         run: docker-compose up -d
 
       - name: Submit Dependencies
