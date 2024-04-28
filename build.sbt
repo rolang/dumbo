@@ -122,6 +122,7 @@ ThisBuild / githubWorkflowPublish += WorkflowStep.Run(
     "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
     "cp -r modules/cli/native/target/bin docker-build/bin",
     "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
+    "docker run rolang/dumbo:${RELEASE_TAG}-alpine", // run for health-checking the docker image
     "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
     "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
     "docker push rolang/dumbo:latest-alpine",
