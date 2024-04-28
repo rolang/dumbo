@@ -95,11 +95,18 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
 )
 
 ThisBuild / githubWorkflowBuild ++= List(
-  "ubuntu" -> Map("SCALANATIVE_LTO" -> LTO.thin.toString()),
-  "macos"  -> Map.empty,
+  "ubuntu" -> Map("SCALANATIVE_LTO" -> LTO.thin.toString())
+  // "macos"  -> Map.empty,
 ).map { case (os, envs) =>
   WorkflowStep.Run(
-    commands = List("sbt buildCliBinary"),
+    commands = List(
+      "sbt buildCliBinary",
+      // temporary for testing in ci
+      "cp -r modules/cli/native/target/bin docker-build/bin",
+      "docker build ./docker-build -t rolang/dumbo:0.3.x-test",
+      "docker run rolang/dumbo:0.3.x-test -fail",
+      """echo "should not display as previous step failed"""",
+    ),
     name = Some(s"Generate CLI native binary ($os)"),
     cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, '$os')"),
     env = Map("SCALANATIVE_MODE" -> Mode.releaseFast.toString()) ++ envs,
@@ -122,6 +129,7 @@ ThisBuild / githubWorkflowPublish += WorkflowStep.Run(
     "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
     "cp -r modules/cli/native/target/bin docker-build/bin",
     "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
+    "docker run rolang/dumbo:${RELEASE_TAG}-alpine -v",
     "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
     "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
     "docker push rolang/dumbo:latest-alpine",
