@@ -225,7 +225,7 @@ jobs:
       - name: Download target directories (3, rootNative)
         uses: actions/download-artifact@v4
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-3-rootNative
+          pattern: target-*-${{ matrix.java }}-3-rootNative
 
       - name: Inflate target directories (3, rootNative)
         run: |

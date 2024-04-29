@@ -106,6 +106,19 @@ ThisBuild / githubWorkflowBuild ++= List(
   )
 }
 
+ThisBuild / githubWorkflowGeneratedDownloadSteps := {
+  (ThisBuild / githubWorkflowGeneratedDownloadSteps).value.map {
+    case s if s.name.contains("Download target directories (3, rootNative)") =>
+      WorkflowStep.Use(
+        ref = UseRef.Public("actions", "download-artifact", "v4"),
+        params = Map("pattern" -> "target-*-${{ matrix.java }}-3-rootNative"),
+        id = s.id,
+        name = s.name,
+      )
+    case s => s
+  }
+}
+
 ThisBuild / githubWorkflowPublish += WorkflowStep.Use(
   ref = UseRef.Public("softprops", "action-gh-release", "v1"),
   name = Some("Upload release binaries"),
