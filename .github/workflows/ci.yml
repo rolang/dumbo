@@ -133,15 +133,15 @@ jobs:
 
       - name: Generate CLI native binary (ubuntu)
         if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'ubuntu')
-        env:
-          SCALANATIVE_MODE: release-fast
-          SCALANATIVE_LTO: thin
+        # env:
+        #   SCALANATIVE_MODE: release-fast
+        #   SCALANATIVE_LTO: thin
         run: sbt buildCliBinary
 
       - name: Generate CLI native binary (macos)
         if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'macos')
-        env:
-          SCALANATIVE_MODE: release-fast
+        # env:
+        #   SCALANATIVE_MODE: release-fast
         run: sbt buildCliBinary
 
       - name: Run example (covers reading resources from a jar)
