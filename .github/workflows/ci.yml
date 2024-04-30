@@ -100,8 +100,8 @@ jobs:
           brew install llvm@17 s2n utf8proc
           echo "LLVM_BIN=/opt/homebrew/opt/llvm@17/bin" >> $GITHUB_ENV
 
-      # - name: Check that workflows are up to date
-      #   run: sbt githubWorkflowCheck
+      - name: Check that workflows are up to date
+        run: sbt githubWorkflowCheck
 
       - name: Check scalafix/scalafmt lints
         if: matrix.java == 'temurin@21' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')
@@ -133,19 +133,19 @@ jobs:
 
       - name: Generate CLI native binary (ubuntu)
         if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'ubuntu')
-        # env:
-        #   SCALANATIVE_MODE: release-fast
-        #   SCALANATIVE_LTO: thin
+        env:
+          SCALANATIVE_MODE: release-fast
+          SCALANATIVE_LTO: thin
         run: sbt buildCliBinary
 
       - name: Generate CLI native binary (macos)
         if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'macos')
-        # env:
-        #   SCALANATIVE_MODE: release-fast
+        env:
+          SCALANATIVE_MODE: release-fast
         run: sbt buildCliBinary
-      
+
       - name: Upload command line binaries
-        if: matrix.project == 'rootNative' && (matrix.scala == '3')
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@v4
         with:
           name: cli-bin-${{ matrix.os }}
@@ -156,37 +156,19 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' example/run
 
       - name: Make target directories
-        #if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
         run: mkdir -p modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
 
       - name: Compress target directories
-        #if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
         run: tar cf targets.tar modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
 
       - name: Upload target directories
-        #if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@v4
         with:
           name: target-${{ matrix.os }}-${{ matrix.java }}-${{ matrix.scala }}-${{ matrix.project }}
           path: targets.tar
-
-  post_build_test:
-    name: temp_test
-    needs: [build]
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        java: [temurin@21]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Download cli builds
-        uses: actions/download-artifact@v4
-        with:
-          pattern: cli-bin-*
-          path: target-cli
-          merge-multiple: true
-      - name: List binary artifacts
-        run: ls -la && ls -R target-cli
 
   publish:
     name: Publish Artifacts
@@ -301,17 +283,19 @@ jobs:
           SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
         run: sbt tlCiRelease
 
-      - name: Download macOS command line builds
+      - name: Download command line binaries
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/download-artifact@v4
         with:
-          pattern: target-macos-*-${{ matrix.java }}-3-rootNative
+          pattern: cli-bin-*
+          path: target-cli/bin
+          merge-multiple: true
 
       - name: Upload release binaries
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: modules/cli/native/target/bin/*
+          files: target-cli/bin/*
 
       - name: Release docker image
         if: startsWith(github.ref, 'refs/tags/')
@@ -320,7 +304,7 @@ jobs:
         run: |
           echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin
           export RELEASE_TAG=${GITHUB_REF_NAME#'v'}
-          cp -r modules/cli/native/target/bin docker-build/bin
+          cp -r target-cli/bin docker-build/bin
           docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine
           docker run rolang/dumbo:${RELEASE_TAG}-alpine
           docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine
