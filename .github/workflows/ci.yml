@@ -283,6 +283,16 @@ jobs:
           SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
         run: sbt tlCiRelease
 
+  publish-cli:
+    name: Publish command line artifacts
+    needs: [build]
+    if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        java: [temurin@21]
+    runs-on: ${{ matrix.os }}
+    steps:
       - name: Download command line binaries
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/download-artifact@v4
