@@ -122,8 +122,8 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
     List(
       j,
       WorkflowJob(
-        id = "publish-cli",
-        name = "Publish command line artifacts",
+        id = "publish-cli-bin",
+        name = "Publish command line binaries",
         needs = List("build"),
         cond = Some(
           "github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')"
@@ -135,22 +135,39 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
             ref = UseRef.Public("actions", "download-artifact", "v4"),
             params = Map("pattern" -> "cli-bin-*", "path" -> "target-cli/bin", "merge-multiple" -> "true"),
             name = Some("Download command line binaries"),
-            cond = Some("startsWith(github.ref, 'refs/tags/')"),
           ),
           WorkflowStep.Use(
             ref = UseRef.Public("softprops", "action-gh-release", "v1"),
             name = Some("Upload release binaries"),
-            params = Map(
-              "files" -> "target-cli/bin/*"
-            ),
-            cond = Some("startsWith(github.ref, 'refs/tags/')"),
+            params = Map("files" -> "target-cli/bin/*"),
+          ),
+        ),
+      ),
+      WorkflowJob(
+        id = "publish-cli-docker",
+        name = "Publish command line docker image",
+        needs = List("build"),
+        cond = Some(
+          "github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')"
+        ),
+        scalas = Nil,
+        javas = List(JavaSpec.temurin("21")),
+        steps = List(
+          WorkflowStep.Use(
+            name = Some("Download command line linux build"),
+            ref = UseRef.Public("actions", "download-artifact", "v4"),
+            params = Map("name" -> "target-${{ matrix.os }}-${{ matrix.java }}-3-rootNative"),
+          ),
+          WorkflowStep.Run(
+            name = Some("Inflate command line linux build"),
+            commands = List("tar xf targets.tar", "rm targets.tar"),
           ),
           WorkflowStep.Run(
             name = Some("Release docker image"),
             commands = List(
               """echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin""",
               "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
-              "cp -r target-cli/bin docker-build/bin",
+              "cp -r modules/cli/native/target/bin docker-build/bin",
               "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
               "docker run rolang/dumbo:${RELEASE_TAG}-alpine", // run for health-checking the docker image
               "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",

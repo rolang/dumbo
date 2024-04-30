@@ -283,8 +283,8 @@ jobs:
           SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
         run: sbt tlCiRelease
 
-  publish-cli:
-    name: Publish command line artifacts
+  publish-cli-bin:
+    name: Publish command line binaries
     needs: [build]
     if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     strategy:
@@ -294,7 +294,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Download command line binaries
-        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/download-artifact@v4
         with:
           pattern: cli-bin-*
@@ -302,10 +301,29 @@ jobs:
           merge-multiple: true
 
       - name: Upload release binaries
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: target-cli/bin/*
+
+  publish-cli-docker:
+    name: Publish command line docker image
+    needs: [build]
+    if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        java: [temurin@21]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download command line linux build
+        uses: actions/download-artifact@v4
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-3-rootNative
+
+      - name: Inflate command line linux build
+        run: |
+          tar xf targets.tar
+          rm targets.tar
 
       - name: Release docker image
         if: startsWith(github.ref, 'refs/tags/')
@@ -314,7 +332,7 @@ jobs:
         run: |
           echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin
           export RELEASE_TAG=${GITHUB_REF_NAME#'v'}
-          cp -r target-cli/bin docker-build/bin
+          cp -r modules/cli/native/target/bin docker-build/bin
           docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine
           docker run rolang/dumbo:${RELEASE_TAG}-alpine
           docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine
