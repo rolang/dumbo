@@ -181,7 +181,7 @@ jobs:
         with:
           pattern: target-macos-*-${{ matrix.java }}-3-rootNative
       - name: List binary artifacts
-        run: ls -la modules/cli/native/target/bin
+        run: pwd && ls -la && ls -la modules/cli/native/target/
 
   publish:
     name: Publish Artifacts
