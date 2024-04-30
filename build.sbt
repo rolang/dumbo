@@ -36,6 +36,7 @@ ThisBuild / tlCiScalafixCheck          := false
 
 lazy val llvmVersion  = "17"
 lazy val brewFormulas = Set("s2n", "utf8proc")
+lazy val isTagCond    = "startsWith(github.ref, 'refs/tags/')"
 
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
@@ -99,12 +100,21 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
 ThisBuild / githubWorkflowBuild ++= List(
   "ubuntu" -> Map("SCALANATIVE_LTO" -> LTO.thin.toString()),
   "macos"  -> Map.empty,
-).map { case (os, envs) =>
-  WorkflowStep.Run(
+).flatMap { case (os, envs) =>
+  val base = WorkflowStep.Run(
     commands = List("sbt buildCliBinary"),
-    name = Some(s"Generate CLI native binary ($os)"),
+    name = Some(s"Generate CLI native binary"),
     cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, '$os')"),
-    env = Map("SCALANATIVE_MODE" -> Mode.releaseFast.toString()) ++ envs,
+  )
+
+  List(
+    // debug mode
+    base.withName(base.name.map(_ + s" ($os, debug)")).withCond(base.cond.map(_ + s" && !$isTagCond")),
+    // release mode (takes long time...)
+    base
+      .withName(base.name.map(_ + s" ($os, release)"))
+      .withEnv(env = Map("SCALANATIVE_MODE" -> Mode.releaseFast.toString()) ++ envs)
+      .withCond(base.cond.map(_ + s" && $isTagCond")),
   )
 }
 
@@ -125,9 +135,7 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
         id = "publish-cli-bin",
         name = "Publish command line binaries",
         needs = List("build"),
-        cond = Some(
-          "github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')"
-        ),
+        cond = Some(isTagCond),
         scalas = Nil,
         javas = List(JavaSpec.temurin("21")),
         steps = List(
@@ -147,9 +155,7 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
         id = "publish-cli-docker",
         name = "Publish command line docker image",
         needs = List("build"),
-        cond = Some(
-          "github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')"
-        ),
+        cond = Some(isTagCond),
         scalas = Nil,
         javas = List(JavaSpec.temurin("21")),
         steps = List(
@@ -177,7 +183,6 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
             env = Map(
               "DOCKER_PASSWORD" -> "${{ secrets.DOCKER_PASSWORD }}"
             ),
-            cond = Some("startsWith(github.ref, 'refs/tags/')"),
           ),
         ),
       ),
