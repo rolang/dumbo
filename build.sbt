@@ -168,51 +168,6 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
   case j => List(j)
 }
 
-// publish command line binaries and docker image
-// ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
-//   id = "publish-cli",
-//   name = "Publish command line artifacts",
-//   needs = List("build"),
-//   cond = Some(
-//     "github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')"
-//   ),
-//   scalas = Nil,
-//   javas = List(JavaSpec.temurin("21")),
-//   steps = List(
-//     WorkflowStep.Use(
-//       ref = UseRef.Public("actions", "download-artifact", "v4"),
-//       params = Map("pattern" -> "cli-bin-*", "path" -> "target-cli/bin", "merge-multiple" -> "true"),
-//       name = Some("Download command line binaries"),
-//       cond = Some("startsWith(github.ref, 'refs/tags/')"),
-//     ),
-//     WorkflowStep.Use(
-//       ref = UseRef.Public("softprops", "action-gh-release", "v1"),
-//       name = Some("Upload release binaries"),
-//       params = Map(
-//         "files" -> "target-cli/bin/*"
-//       ),
-//       cond = Some("startsWith(github.ref, 'refs/tags/')"),
-//     ),
-//     WorkflowStep.Run(
-//       name = Some("Release docker image"),
-//       commands = List(
-//         """echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin""",
-//         "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
-//         "cp -r target-cli/bin docker-build/bin",
-//         "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
-//         "docker run rolang/dumbo:${RELEASE_TAG}-alpine", // run for health-checking the docker image
-//         "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
-//         "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
-//         "docker push rolang/dumbo:latest-alpine",
-//       ),
-//       env = Map(
-//         "DOCKER_PASSWORD" -> "${{ secrets.DOCKER_PASSWORD }}"
-//       ),
-//       cond = Some("startsWith(github.ref, 'refs/tags/')"),
-//     ),
-//   ),
-// )
-
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
   name = Some("Run example (covers reading resources from a jar)"),
