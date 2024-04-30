@@ -172,16 +172,20 @@ jobs:
         java: [temurin@21]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Download linux native builds
+      - name: Download native builds
         uses: actions/download-artifact@v4
         with:
-          pattern: target-ubuntu-*-${{ matrix.java }}-3-rootNative
-      - name: Download macOS native builds
-        uses: actions/download-artifact@v4
-        with:
-          pattern: target-macos-*-${{ matrix.java }}-3-rootNative
+          pattern: target-*-${{ matrix.java }}-3-rootNative
+          path: target-native
+          merge-multiple: true
+      # - name: Download macOS native builds
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     pattern: target-macos-*-${{ matrix.java }}-3-rootNative
+      #     path: target-cli
+      #     merge-multiple: true
       - name: List binary artifacts
-        run: pwd && ls -la && ls -la modules/cli/native/target/
+        run: pwd && ls -la && ls -la target-native && ls -R target-native/modules/cli/native/target/bin
 
   publish:
     name: Publish Artifacts
