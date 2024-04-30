@@ -153,7 +153,7 @@ jobs:
         run: sbt buildCliBinary
 
       - name: Upload command line binaries
-        if: matrix.project == 'rootNative' && (matrix.scala == '3') && github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: cli-bin-${{ matrix.os }}

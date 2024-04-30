@@ -122,9 +122,7 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Use(
   ref = UseRef.Public("actions", "upload-artifact", "v4"),
   params = Map("name" -> "cli-bin-${{ matrix.os }}", "path" -> "modules/cli/native/target/bin/*"),
   name = Some("Upload command line binaries"),
-  cond = Some(
-    "matrix.project == 'rootNative' && (matrix.scala == '3') && github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')"
-  ),
+  cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && $isTagCond"),
 )
 
 ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI).value.flatMap {
