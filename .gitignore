@@ -14,5 +14,6 @@ target/
 .metals/
 .vscode/
 .bloop/
+.scala-build/
 metals.sbt
 docker-build/bin

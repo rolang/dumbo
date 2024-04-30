@@ -131,21 +131,29 @@ jobs:
         if: matrix.project == 'rootNative' && (matrix.scala == '3')
         run: sbt cliNative/test
 
-      - name: Generate CLI native binary (ubuntu)
-        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'ubuntu')
+      - name: Generate CLI native binary (ubuntu, debug)
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'ubuntu') && !startsWith(github.ref, 'refs/tags/')
+        run: sbt buildCliBinary
+
+      - name: Generate CLI native binary (ubuntu, release)
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'ubuntu') && startsWith(github.ref, 'refs/tags/')
         env:
           SCALANATIVE_MODE: release-fast
           SCALANATIVE_LTO: thin
         run: sbt buildCliBinary
 
-      - name: Generate CLI native binary (macos)
-        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'macos')
+      - name: Generate CLI native binary (macos, debug)
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'macos') && !startsWith(github.ref, 'refs/tags/')
+        run: sbt buildCliBinary
+
+      - name: Generate CLI native binary (macos, release)
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, 'macos') && startsWith(github.ref, 'refs/tags/')
         env:
           SCALANATIVE_MODE: release-fast
         run: sbt buildCliBinary
 
       - name: Upload command line binaries
-        if: matrix.project == 'rootNative' && (matrix.scala == '3') && github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+        if: matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: cli-bin-${{ matrix.os }}
@@ -283,8 +291,17 @@ jobs:
           SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
         run: sbt tlCiRelease
 
+  publish-cli-bin:
+    name: Publish command line binaries
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        java: [temurin@21]
+    runs-on: ${{ matrix.os }}
+    steps:
       - name: Download command line binaries
-        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/download-artifact@v4
         with:
           pattern: cli-bin-*
@@ -292,19 +309,37 @@ jobs:
           merge-multiple: true
 
       - name: Upload release binaries
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: target-cli/bin/*
 
+  publish-cli-docker:
+    name: Publish command line docker image
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        java: [temurin@21]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download command line linux build
+        uses: actions/download-artifact@v4
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-3-rootNative
+
+      - name: Inflate command line linux build
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
       - name: Release docker image
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin
           export RELEASE_TAG=${GITHUB_REF_NAME#'v'}
-          cp -r target-cli/bin docker-build/bin
+          cp -r modules/cli/native/target/bin docker-build/bin
           docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine
           docker run rolang/dumbo:${RELEASE_TAG}-alpine
           docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine

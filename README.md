@@ -65,7 +65,7 @@ For usage via command line see [command-line](#command-line) section.
 In a sbt project dumbo can be added like:
 
 ```scala
-libraryDependencies += "dev.rolang" %% "dumbo" % "0.1.x"
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.3.x"
 ```
 
 _For compatibility with skunk `0.6.x` / natchez / Scala 2.12.x use release series `0.0.x`_:
@@ -100,7 +100,7 @@ The migration can be executed like:
 ```scala
 import cats.effect.{IO, IOApp}
 import dumbo.{ConnectionConfig, Dumbo}
-import natchez.Trace.Implicits.noop
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
 object ExampleApp extends IOApp.Simple {
   override def run: IO[Unit] = Dumbo
@@ -133,6 +133,35 @@ Run example with sbt:
 
 ```shell
 sbt 'example/run'
+```
+
+Or run via [scala-cli](https://scala-cli.virtuslab.org/):
+```scala
+//> using scala 3.3.3
+//> using resourceDir modules/example/src/main/resources
+//> using dep "dev.rolang::dumbo::0.3.1"
+
+import cats.effect.{IO, IOApp}
+import dumbo.{ConnectionConfig, Dumbo}
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+
+object ExampleApp extends IOApp.Simple:
+  def run = Dumbo
+    .withResourcesIn[IO]("db/migration")
+    .apply(
+      connection = ConnectionConfig(
+        host = "localhost",
+        port = 5432,
+        user = "postgres",
+        database = "postgres",
+        password = Some("postgres"),
+        ssl = skunk.SSL.None,
+      )
+    )
+    .runMigration
+    .flatMap { result =>
+      IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
+    }
 ```
 
 ## Configurations
@@ -253,6 +282,18 @@ export LD_LIBRARY_PATH="/home/linuxbrew/.linuxbrew/lib"
 
 # download and run dumbo
 curl -L https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-x86_64-linux > dumbo && chmod +x dumbo
+./dumbo -v
+```
+
+#### macOS
+```shell
+# install prerequisites
+brew install s2n utf8proc
+# download and run dumbo
+# on Apple silicon / ARM
+curl -L https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-aarch64-macosx > dumbo && chmod +x dumbo
+# on Intel / x86-64 use this instead:
+# curl -L https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-x86_64-macosx > dumbo && chmod +x dumbo
 ./dumbo -v
 ```
 

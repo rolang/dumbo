@@ -36,6 +36,7 @@ ThisBuild / tlCiScalafixCheck          := false
 
 lazy val llvmVersion  = "17"
 lazy val brewFormulas = Set("s2n", "utf8proc")
+lazy val isTagCond    = "startsWith(github.ref, 'refs/tags/')"
 
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
@@ -99,12 +100,21 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
 ThisBuild / githubWorkflowBuild ++= List(
   "ubuntu" -> Map("SCALANATIVE_LTO" -> LTO.thin.toString()),
   "macos"  -> Map.empty,
-).map { case (os, envs) =>
-  WorkflowStep.Run(
+).flatMap { case (os, envs) =>
+  val base = WorkflowStep.Run(
     commands = List("sbt buildCliBinary"),
-    name = Some(s"Generate CLI native binary ($os)"),
+    name = Some(s"Generate CLI native binary"),
     cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && startsWith(matrix.os, '$os')"),
-    env = Map("SCALANATIVE_MODE" -> Mode.releaseFast.toString()) ++ envs,
+  )
+
+  List(
+    // debug mode
+    base.withName(base.name.map(_ + s" ($os, debug)")).withCond(base.cond.map(_ + s" && !$isTagCond")),
+    // release mode (takes long time...)
+    base
+      .withName(base.name.map(_ + s" ($os, release)"))
+      .withEnv(env = Map("SCALANATIVE_MODE" -> Mode.releaseFast.toString()) ++ envs)
+      .withCond(base.cond.map(_ + s" && $isTagCond")),
   )
 }
 
@@ -112,45 +122,71 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Use(
   ref = UseRef.Public("actions", "upload-artifact", "v4"),
   params = Map("name" -> "cli-bin-${{ matrix.os }}", "path" -> "modules/cli/native/target/bin/*"),
   name = Some("Upload command line binaries"),
-  cond = Some(
-    "matrix.project == 'rootNative' && (matrix.scala == '3') && github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')"
-  ),
+  cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && $isTagCond"),
 )
 
-// publish binaries and docker image
-ThisBuild / githubWorkflowPublish ++= Seq(
-  WorkflowStep.Use(
-    ref = UseRef.Public("actions", "download-artifact", "v4"),
-    params = Map("pattern" -> "cli-bin-*", "path" -> "target-cli/bin", "merge-multiple" -> "true"),
-    name = Some("Download command line binaries"),
-    cond = Some("startsWith(github.ref, 'refs/tags/')"),
-  ),
-  WorkflowStep.Use(
-    ref = UseRef.Public("softprops", "action-gh-release", "v1"),
-    name = Some("Upload release binaries"),
-    params = Map(
-      "files" -> "target-cli/bin/*"
-    ),
-    cond = Some("startsWith(github.ref, 'refs/tags/')"),
-  ),
-  WorkflowStep.Run(
-    name = Some("Release docker image"),
-    commands = List(
-      """echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin""",
-      "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
-      "cp -r target-cli/bin docker-build/bin",
-      "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
-      "docker run rolang/dumbo:${RELEASE_TAG}-alpine", // run for health-checking the docker image
-      "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
-      "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
-      "docker push rolang/dumbo:latest-alpine",
-    ),
-    env = Map(
-      "DOCKER_PASSWORD" -> "${{ secrets.DOCKER_PASSWORD }}"
-    ),
-    cond = Some("startsWith(github.ref, 'refs/tags/')"),
-  ),
-)
+ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI).value.flatMap {
+  case j if j.id == "publish" =>
+    List(
+      j,
+      WorkflowJob(
+        id = "publish-cli-bin",
+        name = "Publish command line binaries",
+        needs = List("build"),
+        cond = Some(isTagCond),
+        scalas = Nil,
+        javas = List(JavaSpec.temurin("21")),
+        steps = List(
+          WorkflowStep.Use(
+            ref = UseRef.Public("actions", "download-artifact", "v4"),
+            params = Map("pattern" -> "cli-bin-*", "path" -> "target-cli/bin", "merge-multiple" -> "true"),
+            name = Some("Download command line binaries"),
+          ),
+          WorkflowStep.Use(
+            ref = UseRef.Public("softprops", "action-gh-release", "v1"),
+            name = Some("Upload release binaries"),
+            params = Map("files" -> "target-cli/bin/*"),
+          ),
+        ),
+      ),
+      WorkflowJob(
+        id = "publish-cli-docker",
+        name = "Publish command line docker image",
+        needs = List("build"),
+        cond = Some(isTagCond),
+        scalas = Nil,
+        javas = List(JavaSpec.temurin("21")),
+        steps = List(
+          WorkflowStep.Use(
+            name = Some("Download command line linux build"),
+            ref = UseRef.Public("actions", "download-artifact", "v4"),
+            params = Map("name" -> "target-${{ matrix.os }}-${{ matrix.java }}-3-rootNative"),
+          ),
+          WorkflowStep.Run(
+            name = Some("Inflate command line linux build"),
+            commands = List("tar xf targets.tar", "rm targets.tar"),
+          ),
+          WorkflowStep.Run(
+            name = Some("Release docker image"),
+            commands = List(
+              """echo -n "${DOCKER_PASSWORD}" | docker login docker.io -u rolang --password-stdin""",
+              "export RELEASE_TAG=${GITHUB_REF_NAME#'v'}",
+              "cp -r modules/cli/native/target/bin docker-build/bin",
+              "docker build ./docker-build -t rolang/dumbo:${RELEASE_TAG}-alpine",
+              "docker run rolang/dumbo:${RELEASE_TAG}-alpine", // run for health-checking the docker image
+              "docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine",
+              "docker push rolang/dumbo:${RELEASE_TAG}-alpine",
+              "docker push rolang/dumbo:latest-alpine",
+            ),
+            env = Map(
+              "DOCKER_PASSWORD" -> "${{ secrets.DOCKER_PASSWORD }}"
+            ),
+          ),
+        ),
+      ),
+    )
+  case j => List(j)
+}
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
