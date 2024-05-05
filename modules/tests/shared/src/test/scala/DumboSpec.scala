@@ -17,8 +17,8 @@ import cats.effect.std.Console
 import cats.implicits.*
 import fs2.io.file.Path
 
-class DumboSpec extends ffstest.FTest {
-  override val postgresPort: Int = 5432
+trait DumboSpec extends ffstest.FTest {
+  def db: Db
 
   def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit = {
     def toCompare(h: HistoryEntry) =
@@ -116,7 +116,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Fail with CopyNotSupportedException") {
-    val schema = "public"
+    val schema = "schema_1"
 
     for {
       dumboResA <- dumboMigrate(schema, dumboWithResources("db/test_copy_from")).attempt
@@ -212,7 +212,7 @@ class DumboSpec extends ffstest.FTest {
     dbTest("don't log on waiting for lock release if under provided duration") {
       val testConsole = new TestConsole()
       for {
-        _ <- dumboMigrate("public", withResources, logMigrationStateAfter = 5.second)(testConsole)
+        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 5.second)(testConsole)
         _  = assert(testConsole.logs.get().count(logMatch) == 0)
       } yield ()
     }
@@ -221,9 +221,29 @@ class DumboSpec extends ffstest.FTest {
       val testConsole = new TestConsole()
 
       for {
-        _ <- dumboMigrate("public", withResources, logMigrationStateAfter = 800.millis)(testConsole)
-        _  = assert(testConsole.logs.get().count(logMatch) >= 2)
+        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(testConsole)
+        _ = db match {
+              case Db.Postgres => assert(testConsole.logs.get().count(logMatch) >= 2)
+              case Db.CockroachDb =>
+                assert(testConsole.logs.get().count(_.startsWith("Progress monitor is not supported")) == 1)
+            }
       } yield ()
     }
   }
+}
+
+sealed trait Db
+object Db {
+  case object Postgres    extends Db
+  case object CockroachDb extends Db
+}
+
+class DumboSpecPostgres extends DumboSpec {
+  override val db: Db            = Db.Postgres
+  override val postgresPort: Int = 5432
+}
+
+class DumboSpecCockroachDb extends DumboSpec {
+  override val db: Db            = Db.CockroachDb
+  override val postgresPort: Int = 5434
 }
