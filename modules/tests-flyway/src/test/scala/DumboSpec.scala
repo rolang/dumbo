@@ -4,14 +4,16 @@
 
 package dumbo
 
+import scala.io.AnsiColor
+
 import cats.data.NonEmptyList
 import cats.effect.IO
 import fs2.io.file.Path
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 
-class DumboSpec extends ffstest.FTest {
-  override val postgresPort: Int = 5433
+trait DumboSpec extends ffstest.FTest {
+  def db: Db
 
   def flywayMigrate(defaultSchema: String, sourcesPath: Path, schemas: List[String] = Nil): IO[MigrateResult] = IO(
     Flyway
@@ -21,8 +23,8 @@ class DumboSpec extends ffstest.FTest {
       .locations(sourcesPath.toString)
       .dataSource(
         s"jdbc:postgresql://localhost:$postgresPort/postgres?ssl=false",
-        "postgres",
-        "postgres",
+        "root",
+        null,
       )
       .load()
       .migrate()
@@ -66,23 +68,38 @@ class DumboSpec extends ffstest.FTest {
     val schema = "schema_1"
 
     for {
-      flywayRes     <- flywayMigrate(schema, Path("db/test_failing_sql")).attempt
-      _              = assert(flywayRes.isLeft)
-      _              = assert(flywayRes.left.exists(_.getMessage().contains("relation \"test\" already exists")))
-      historyFlyway <- loadHistory(schema)
-      _             <- dropSchemas
-      dumboRes      <- dumboMigrate(schema, dumboWithResources("db/test_failing_sql")).attempt
-      _              = assert(dumboRes.isLeft)
-      _              = assert(dumboRes.left.exists(_.getMessage().contains("Relation \"test\" already exists")))
-      historyDumbo  <- loadHistory(schema)
-      _              = assertEqualHistory(historyFlyway, historyDumbo)
+      flywayRes <- flywayMigrate(schema, Path("db/test_failing_sql")).attempt
+      _          = assert(flywayRes.isLeft)
+      // Flyway does not provide more specific error message with CockroachDB in this case
+      _ = if (Set[Db](Db.Postgres(16), Db.Postgres(11)).contains(db)) {
+            assert(flywayRes.left.exists(_.getMessage().contains("relation \"test\" already exists")))
+          }
+      historyFlyway <- loadHistory(schema).map(h =>
+                         db match {
+                           case Db.Postgres(_) => h
+                           // Flyway is not able to run it within a transaction and rollback, so it adds a history entry with success false in CockroachDB
+                           // going to ignore it in the test for now...
+                           case Db.CockroachDb => h.filter(_.success == true)
+                         }
+                       )
+      _        <- dropSchemas
+      dumboRes <- dumboMigrate(schema, dumboWithResources("db/test_failing_sql")).attempt
+      _         = assert(dumboRes.isLeft)
+      _ = assert(
+            dumboRes.left.exists(
+              _.getMessage().linesIterator.exists(_.matches(""".*Relation ".*test" already exists.*"""))
+            )
+          )
+      historyDumbo <- loadHistory(schema)
+      _             = assertEqualHistory(historyFlyway, historyDumbo)
     } yield ()
   }
 
   dbTest("Dumbo is compatible with Flyway history state") {
-    val path: Path    = Path("db/test_1")
-    val withResources = dumboWithResources("db/test_1")
-    val defaultSchema = "test_a"
+    val path: Path     = Path("db/test_1")
+    val withResources  = dumboWithResources("db/test_1")
+    val withResourcesB = dumboWithResources("db/test_1_extended")
+    val defaultSchema  = "test_a"
 
     for {
       flywayRes <- flywayMigrate(defaultSchema, path)
@@ -92,12 +109,15 @@ class DumboSpec extends ffstest.FTest {
       resDumbo  <- dumboMigrate(defaultSchema, withResources)
       _          = assertEquals(resDumbo.migrationsExecuted, 0)
       histB     <- loadHistory(defaultSchema)
-      _          = assertEquals(histA, histB) // history unchanged
+      _          = assertEquals(histA, histB)                                           // history unchanged
+      _         <- assertIO(dumboMigrate(defaultSchema, withResourcesB).map(_.migrationsExecuted), 1)
+      _         <- assertIO(loadHistory(defaultSchema).map(_.length), histB.length + 1) // history extended
     } yield ()
   }
 
   dbTest("Flyway is compatible with Dumbo history state") {
-    val path: Path    = Path("db/test_1")
+    val path          = Path("db/test_1")
+    val pathB         = Path("db/test_1_extended")
     val withResources = dumboWithResources("db/test_1")
     val defaultSchema = "test_a"
 
@@ -109,7 +129,9 @@ class DumboSpec extends ffstest.FTest {
       _          = assert(flywayRes.success)
       _          = assertEquals(flywayRes.migrationsExecuted, 0)
       histB     <- loadHistory(defaultSchema)
-      _          = assertEquals(histA, histB) // history unchanged
+      _          = assertEquals(histA, histB)                                           // history unchanged
+      _         <- assertIO(flywayMigrate(defaultSchema, pathB).map(_.migrationsExecuted), 1)
+      _         <- assertIO(loadHistory(defaultSchema).map(_.length), histB.length + 1) // history extended
     } yield ()
   }
 
@@ -156,14 +178,21 @@ class DumboSpec extends ffstest.FTest {
     val schemas       = NonEmptyList.of("schema_1", "schema_2")
 
     for {
-      flywayRes     <- flywayMigrate(schemas.head, path, schemas.tail).attempt
-      _              = assert(flywayRes.isLeft)
-      flywayHistory <- loadHistory(schemas.head)
-      _             <- dropSchemas
-      dumboRes      <- dumboMigrate(schemas.head, withResources, schemas.tail).attempt
-      _              = assert(dumboRes.isLeft)
-      dumboHistory  <- loadHistory(schemas.head)
-      _              = assertEqualHistory(flywayHistory, dumboHistory)
+      flywayRes <- flywayMigrate(schemas.head, path, schemas.tail).attempt
+      _          = assert(flywayRes.isLeft)
+      flywayHistory <- loadHistory(schemas.head).map(h =>
+                         db match {
+                           case Db.Postgres(_) => h
+                           // Flyway is not able to run it within a transaction and rollback, so it adds a history entry with success false in CockroachDB
+                           // going to ignore it in the test for now...
+                           case Db.CockroachDb => h.filter(_.success == true)
+                         }
+                       )
+      _            <- dropSchemas
+      dumboRes     <- dumboMigrate(schemas.head, withResources, schemas.tail).attempt
+      _             = assert(dumboRes.isLeft)
+      dumboHistory <- loadHistory(schemas.head)
+      _             = assertEqualHistory(flywayHistory, dumboHistory)
     } yield ()
   }
 
@@ -189,26 +218,41 @@ class DumboSpec extends ffstest.FTest {
     val withResources = dumboWithResources("db/test_non_transactional")
     val schema        = "schema_1"
 
-    for {
-      flywayRes <- flywayMigrate(schema, path).attempt
-      _ = assert(
-            flywayRes.left.exists(_.getMessage().contains("New enum values must be committed before they can be used"))
-          )
-      flywayHistory <- loadHistory(schema)
-      _             <- dropSchemas
-      dumboRes      <- dumboMigrate(schema, withResources).attempt
-      _ = assert(
-            dumboRes.left.exists(_.getMessage().contains("New enum values must be committed before they can be used"))
-          )
-      dumboHistory <- loadHistory(schema)
-      _             = assertEqualHistory(flywayHistory, dumboHistory)
-    } yield ()
+    // TODO: find a way to force Flyway to run the migration in a transaction on CockroachDb
+    if (db == Db.Postgres(11) || db == Db.Postgres(16))
+      for {
+        flywayRes     <- flywayMigrate(schema, path).attempt
+        flywayHistory <- loadHistory(schema)
+        _             <- dropSchemas
+        dumboRes      <- dumboMigrate(schema, withResources).attempt
+        dumboHistory  <- loadHistory(schema)
+        _              = assert(flywayRes.isLeft)
+        _              = assert(dumboRes.isLeft)
+        _ = List(
+              flywayRes.swap.toOption.get,
+              dumboRes.swap.toOption.get,
+            ).map(_.getMessage().toLowerCase().linesIterator).foreach { lines =>
+              db match {
+                case Db.Postgres(11) =>
+                  assert(lines.exists(_.matches(".*alter type .* cannot run inside a transaction block.*")))
+                case Db.Postgres(_) =>
+                  assert(lines.exists(_.matches(""".*unsafe use of new value ".*" of enum type.*""")))
+                case Db.CockroachDb =>
+                  assert(lines.exists(_.matches(""".*enum value ".*" is not yet public.*""")))
+              }
+            }
+        _ = assertEqualHistory(flywayHistory, dumboHistory)
+      } yield ()
+    else
+      IO.println(
+        s"${AnsiColor.YELLOW}[$db] Skipping test 'Same behaviour on non-transactional operations' as Flyway can't run the statements in a transaction${AnsiColor.RESET}"
+      )
   }
 
   dbTest("Same behavior on copy") {
     val path: Path    = Path("db/test_copy_to")
     val withResources = dumboWithResources("db/test_copy_to")
-    val schema        = "public"
+    val schema        = "schema_1"
 
     for {
       flywayRes <- flywayMigrate(schema, path).attempt
@@ -218,4 +262,25 @@ class DumboSpec extends ffstest.FTest {
       _          = assert(dumboRes.left.exists(_.isInstanceOf[skunk.exception.CopyNotSupportedException]))
     } yield ()
   }
+}
+
+sealed trait Db
+object Db {
+  case class Postgres(version: Int) extends Db
+  case object CockroachDb           extends Db
+}
+
+class DumboFlywaySpecPostgresLatest extends DumboSpec {
+  override val db: Db            = Db.Postgres(16)
+  override val postgresPort: Int = 5433
+}
+
+class DumboFlywaySpecPostgres11 extends DumboSpec {
+  override val db: Db            = Db.Postgres(11)
+  override val postgresPort: Int = 5435
+}
+
+class DumboFlywaySpecCockroachDb extends DumboSpec {
+  override val db: Db            = Db.CockroachDb
+  override val postgresPort: Int = 5437
 }

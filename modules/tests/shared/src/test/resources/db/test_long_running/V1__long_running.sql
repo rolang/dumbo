@@ -1,1 +1,1 @@
-DO $$ BEGIN PERFORM pg_sleep(2); END $$;
+SELECT pg_sleep(2);

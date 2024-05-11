@@ -1,13 +1,39 @@
 services:
-  pg_1:
-    image: postgres:15-alpine
+  pg_latest_1:
+    image: postgres:16-alpine
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_PASSWORD: postgres
-  pg_2:
-    image: postgres:15-alpine
+      POSTGRES_USER: root
+      POSTGRES_HOST_AUTH_METHOD: trust
+  pg_latest_2:
+    image: postgres:16-alpine
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: root
+      POSTGRES_HOST_AUTH_METHOD: trust
+  pg_11_1:
+    image: postgres:11-alpine
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_HOST_AUTH_METHOD: trust
+  pg_11_2:
+    image: postgres:11-alpine
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_HOST_AUTH_METHOD: trust
+  cockroachdb_1:
+    image: cockroachdb/cockroach:v23.2.4
+    ports:
+      - "5436:26257"
+    command: start-single-node --insecure
+  cockroachdb_2:
+    image: cockroachdb/cockroach:v23.2.4
+    ports:
+      - "5437:26257"
+    command: start-single-node --insecure

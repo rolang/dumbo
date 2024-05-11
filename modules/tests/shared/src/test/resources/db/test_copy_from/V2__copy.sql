@@ -1,0 +1,1 @@
+COPY test FROM STDIN;

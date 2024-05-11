@@ -5,6 +5,7 @@
 package ffstest
 
 import scala.concurrent.duration.*
+import scala.util.Random
 
 import cats.data.ValidatedNec
 import cats.effect.{IO, Resource, std}
@@ -21,12 +22,14 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
+  def someSchemaName = s"schema_${Random.alphanumeric.take(10).mkString}"
+
   lazy val connectionConfig: ConnectionConfig = ConnectionConfig(
     host = "localhost",
     port = postgresPort,
-    user = "postgres",
+    user = "root",
     database = "postgres",
-    password = Some("postgres"),
+    password = None,
   )
 
   def session: Resource[IO, Session[IO]] = Session
@@ -81,10 +84,13 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
   def dropSchemas: IO[Unit] = session.use { s =>
     for {
       customSchemas <-
-        s.execute(sql"""
-        SELECT schema_name 
+        s.execute(
+          sql"""
+        SELECT schema_name::text
         FROM information_schema.schemata 
-        WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema'""".query(skunk.codec.text.name))
+        WHERE schema_name NOT LIKE 'pg_%' AND schema_name NOT LIKE 'crdb_%' AND schema_name NOT IN ('information_schema', 'public')"""
+            .query(skunk.codec.text.text)
+        )
       _ <- IO.println(s"Dropping schemas ${customSchemas.mkString(", ")}")
       c <- customSchemas.traverse(schema => s.execute(sql"DROP SCHEMA IF EXISTS #${schema} CASCADE".command))
       _ <- IO.println(s"Schema drop result ${c.mkString(", ")}")

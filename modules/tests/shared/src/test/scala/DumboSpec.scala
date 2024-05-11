@@ -17,8 +17,8 @@ import cats.effect.std.Console
 import cats.implicits.*
 import fs2.io.file.Path
 
-class DumboSpec extends ffstest.FTest {
-  override val postgresPort: Int = 5432
+trait DumboSpec extends ffstest.FTest {
+  def db: Db
 
   def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit = {
     def toCompare(h: HistoryEntry) =
@@ -28,11 +28,10 @@ class DumboSpec extends ffstest.FTest {
   }
 
   test("Run multiple migrations concurrently") {
-    val schema = "schema_1"
+    dropSchemas >> (1 to 5).toList.traverse_ { _ =>
+      val schema = someSchemaName
 
-    (1 to 5).toList.traverse_ { _ =>
       for {
-        _       <- dropSchemas
         res     <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, dumboWithResources("db/test_1")))
         ranks    = res.flatMap(_.migrations.map(_.installedRank)).sorted
         _        = assertEquals(ranks, List(1, 2, 3))
@@ -43,7 +42,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Validate checksum with validation enabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -59,7 +58,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Validate description with validation enabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _   <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -86,7 +85,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Validate for missing files with validation enabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -104,7 +103,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Ignore missing files or missing checksum on validation disabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -116,7 +115,7 @@ class DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Fail with CopyNotSupportedException") {
-    val schema = "public"
+    val schema = someSchemaName
 
     for {
       dumboResA <- dumboMigrate(schema, dumboWithResources("db/test_copy_from")).attempt
@@ -195,6 +194,25 @@ class DumboSpec extends ffstest.FTest {
     } yield ()
   }
 
+  dbTest("Fail on non-transactional operations") {
+    val withResources = dumboWithResources("db/test_non_transactional")
+    val schema        = someSchemaName
+
+    for {
+      dumboRes <- dumboMigrate(schema, withResources).attempt
+      _         = assert(dumboRes.isLeft)
+      errLines  = dumboRes.swap.toOption.get.getMessage().linesIterator
+      _ = db match {
+            case Db.Postgres(11) =>
+              assert(errLines.exists(_.matches(".*ALTER TYPE .* cannot run inside a transaction block.*")))
+            case Db.Postgres(_) =>
+              assert(errLines.exists(_.matches(""".*Unsafe use of new value ".*" of enum type.*""")))
+            case Db.CockroachDb =>
+              assert(errLines.exists(_.matches(""".*Enum value ".*" is not yet public.*""")))
+          }
+    } yield ()
+  }
+
   {
     class TestConsole extends Console[IO] {
       val logs: AtomicReference[Vector[String]] = new AtomicReference(Vector.empty[String])
@@ -212,7 +230,7 @@ class DumboSpec extends ffstest.FTest {
     dbTest("don't log on waiting for lock release if under provided duration") {
       val testConsole = new TestConsole()
       for {
-        _ <- dumboMigrate("public", withResources, logMigrationStateAfter = 5.second)(testConsole)
+        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 5.second)(testConsole)
         _  = assert(testConsole.logs.get().count(logMatch) == 0)
       } yield ()
     }
@@ -221,9 +239,34 @@ class DumboSpec extends ffstest.FTest {
       val testConsole = new TestConsole()
 
       for {
-        _ <- dumboMigrate("public", withResources, logMigrationStateAfter = 800.millis)(testConsole)
-        _  = assert(testConsole.logs.get().count(logMatch) >= 2)
+        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(testConsole)
+        _ = db match {
+              case Db.Postgres(_) => assert(testConsole.logs.get().count(logMatch) >= 2)
+              case Db.CockroachDb =>
+                assert(testConsole.logs.get().count(_.startsWith("Progress monitor is not supported")) == 1)
+            }
       } yield ()
     }
   }
+}
+
+sealed trait Db
+object Db {
+  case class Postgres(version: Int) extends Db
+  case object CockroachDb           extends Db
+}
+
+class DumboSpecPostgresLatest extends DumboSpec {
+  override val db: Db            = Db.Postgres(16)
+  override val postgresPort: Int = 5432
+}
+
+class DumboSpecPostgres11 extends DumboSpec {
+  override val db: Db            = Db.Postgres(11)
+  override val postgresPort: Int = 5434
+}
+
+class DumboSpecCockroachDb extends DumboSpec {
+  override val db: Db            = Db.CockroachDb
+  override val postgresPort: Int = 5436
 }

@@ -51,21 +51,21 @@ object HistoryEntry {
       .to[HistoryEntry]
 
   val fieldNames =
-    "installed_rank, version, description, type, script, checksum, installed_by, installed_on, execution_time, success"
+    "installed_rank::INT4, version, description, type, script, checksum::INT4, installed_by, installed_on, execution_time::INT4, success"
 }
 
 class History(tableName: String) {
   val createTableCommand: Command[Void] =
     sql"""CREATE TABLE IF NOT EXISTS #${tableName} (
-          installed_rank  INT NOT NULL PRIMARY KEY,
+          installed_rank  INT4 NOT NULL PRIMARY KEY,
           version         VARCHAR(50) NULL,
           description     VARCHAR(200) NOT NULL,
           type            VARCHAR(20) NOT NULL,
           script          VARCHAR(1000) NOT NULL,
-          checksum        INT NULL,
+          checksum        INT4 NULL,
           installed_by    VARCHAR(100) NOT NULL,
           installed_on    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          execution_time  INT NOT NULL,
+          execution_time  INT4 NOT NULL,
           success         BOOL NOT NULL
         )""".command
 

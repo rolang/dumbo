@@ -15,13 +15,6 @@ CREATE FUNCTION add(integer, integer) RETURNS integer
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
-CREATE OR REPLACE FUNCTION increment(i integer) RETURNS integer AS $$
-  -- a comment in function body 2
-  BEGIN
-          RETURN i + 1;
-  END;
-$$ LANGUAGE plpgsql;
-
 /* multiline; comment
  * with; nesting: /*; nested block comment */
  ;*/

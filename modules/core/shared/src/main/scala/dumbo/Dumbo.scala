@@ -63,40 +63,46 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
       validateOnMigrate = validateOnMigrate,
-      progressMonitor = Async[F].background {
-        Stream
-          .evalSeq(
-            sessionResource
-              .use(
-                _.execute(
-                  sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
+      progressMonitor = Resource
+        .eval(sessionResource.use(s => Dumbo.hasTableLockSupport(s, s"${defaultSchema}.${schemaHistoryTable}")))
+        .flatMap {
+          case false => Resource.eval(Console[F].println("Progress monitor is not supported for current database"))
+          case true =>
+            Async[F].background {
+              Stream
+                .evalSeq(
+                  sessionResource
+                    .use(
+                      _.execute(
+                        sql"""SELECT ps.pid, ps.query_start, ps.state_change, ps.state, ps.wait_event_type, ps.wait_event, ps.query
                         FROM pg_locks l
                         JOIN pg_stat_all_tables t ON t.relid = l.relation
                         JOIN pg_stat_activity ps ON ps.pid = l.pid
                         WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
-                    .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
-                ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
-              )
-          )
-          .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
-            for {
-              now         <- Clock[F].realTimeInstant
-              startedAgo   = now.getEpochSecond() - start.toEpochSecond()
-              changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
-              queryLogSize = 150
-              queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
-              _ <-
-                Console[F].println(
-                  s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
-                    s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
+                          .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
+                      ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
+                    )
                 )
-            } yield ()
-          }
-          .repeat
-          .metered(logMigrationStateAfter)
-          .compile
-          .drain
-      }.void,
+                .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
+                  for {
+                    now         <- Clock[F].realTimeInstant
+                    startedAgo   = now.getEpochSecond() - start.toEpochSecond()
+                    changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
+                    queryLogSize = 150
+                    queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
+                    _ <-
+                      Console[F].println(
+                        s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
+                          s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
+                      )
+                  } yield ()
+                }
+                .repeat
+                .metered(logMigrationStateAfter)
+                .compile
+                .drain
+            }.void
+        },
     )
   }
 
@@ -117,7 +123,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       user = connection.user,
       database = connection.database,
       password = connection.password,
-      strategy = Typer.Strategy.SearchPath,
+      strategy = Typer.Strategy.BuiltinsOnly,
       ssl = connection.ssl,
       parameters = params,
     )
@@ -201,6 +207,7 @@ class Dumbo[F[_]: Sync: Console](
   private def migrateToNext(
     session: Session[F],
     fs: ResourceReader[F],
+    tableLockSupport: Boolean,
   )(sourceFiles: List[ResourceFile]): F[Option[(HistoryEntry, List[ResourceFile])]] =
     sourceFiles match {
       case Nil => none.pure[F]
@@ -210,7 +217,8 @@ class Dumbo[F[_]: Sync: Console](
           _   <- progressMonitor
         } yield txn).use { _ =>
           for {
-            _               <- session.execute(sql"LOCK TABLE #${historyTable} IN ACCESS EXCLUSIVE MODE".command)
+            _ <- if (tableLockSupport) lockTable(session, historyTable).void
+                 else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
             latestInstalled <- session.unique(dumboHistory.findLatestInstalled).map(_.flatMap(_.sourceFileVersion))
             result <- sourceFiles.dropWhile(s => latestInstalled.exists(s.version <= _)) match {
                         case head :: tail =>
@@ -232,7 +240,7 @@ class Dumbo[F[_]: Sync: Console](
 
   // it's supposed to be prevented by IF NOT EXISTS clause when running concurrently
   // but it doesn't always seem to prevent it, maybe better to lock another table instead of catching those?
-  // https://www.postgresql.org/docs/15/errcodes-appendix.html
+  // https://www.postgresql.org/docs/current/errcodes-appendix.html
   private val duplicateErrorCodes = Set(
     "42710", // duplicate_object
     "23505", // unique_violation
@@ -242,6 +250,8 @@ class Dumbo[F[_]: Sync: Console](
   def runMigration: F[MigrationResult] = sessionResource.use(migrateBySession)
 
   private def migrateBySession(session: Session[F]): F[Dumbo.MigrationResult] = for {
+    dbVersion <- session.unique(sql"SELECT version()".query(text))
+    _         <- Console[F].println(s"Starting migration on $dbVersion")
     schemaRes <-
       allSchemas.toList
         .flatTraverse(schema =>
@@ -254,6 +264,7 @@ class Dumbo[F[_]: Sync: Console](
     _ <- session.execute(dumboHistory.createTableCommand).void.recover {
            case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
          }
+    tableLockSupport <- hasTableLockSupport(session, historyTable)
     _ <- schemaRes match {
            case e @ (_ :: _) => session.execute(dumboHistory.insertSchemaEntry)(e.mkString("\"", "\",\"", "\"")).void
            case _            => ().pure[F]
@@ -272,11 +283,12 @@ class Dumbo[F[_]: Sync: Console](
                            Console[F].println(s"Found ${sourceFiles.size} versioned migration files$inLocation")
                          }
                          _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
-                         migrationResult <- Stream
-                                              .unfoldEval(sourceFiles)(migrateToNext(session, resReader))
-                                              .compile
-                                              .toList
-                                              .map(Dumbo.MigrationResult(_))
+                         migrationResult <-
+                           Stream
+                             .unfoldEval(sourceFiles)(migrateToNext(session, resReader, tableLockSupport))
+                             .compile
+                             .toList
+                             .map(Dumbo.MigrationResult(_))
                        } yield migrationResult
 
     _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse).headOption match {
@@ -355,6 +367,17 @@ object Dumbo extends internal.DumboPlatform {
   def withFilesIn[F[_]: Files](dir: Path): DumboWithResourcesPartiallyApplied[F] =
     new DumboWithResourcesPartiallyApplied[F](ResourceReader.fileFs(dir))
 
+  private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F], table: String) =
+    session.transaction.use(_ =>
+      lockTable(session, table).attempt.map {
+        case Right(Completion.LockTable) => true
+        case _                           => false
+      }
+    )
+
+  private def lockTable[F[_]](session: Session[F], table: String) =
+    session.execute(sql"LOCK TABLE #${table} IN ACCESS EXCLUSIVE MODE".command)
+
   private[dumbo] def listMigrationFiles[F[_]: Sync](
     fs: ResourceReader[F]
   ): F[ValidatedNec[DumboValidationException, List[ResourceFile]]] =
@@ -380,7 +403,7 @@ object Dumbo extends internal.DumboPlatform {
     fs: ResourceReader[F]
   ): Stream[F, Either[String, ResourceFile]] =
     fs.list
-      .filter(f => f.value.endsWith(".sql") || f.value.endsWith(".sql.conf"))
+      .filter(f => f.value.endsWith(".sql"))
       .evalMap { path =>
         val confPath = path.append(".conf")
 

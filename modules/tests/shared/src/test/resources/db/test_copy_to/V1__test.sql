@@ -1,3 +1,1 @@
 CREATE TABLE test (id VARCHAR);
-COPY test TO STDOUT;
-CREATE TABLE test_2 (id VARCHAR);

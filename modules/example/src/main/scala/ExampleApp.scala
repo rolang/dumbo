@@ -13,9 +13,9 @@ object ExampleApp extends IOApp.Simple {
       connection = ConnectionConfig(
         host = "localhost",
         port = 5432,
-        user = "postgres",
+        user = "root",
         database = "postgres",
-        password = Some("postgres"),
+        password = None,
         ssl = skunk.SSL.None, // skunk.SSL config, default is skunk.SSL.None
       ),
       defaultSchema = "dumbo",

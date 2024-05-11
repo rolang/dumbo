@@ -7,7 +7,8 @@
 
 ![Logo](./docs/assets/logo.png)
 
-Simple database migration tool for Scala + Postgres with [skunk](https://typelevel.org/skunk/) that can be deployed on JVM and Native.  
+Simple database migration tool for [Postgres](https://www.postgresql.org) with [skunk](https://typelevel.org/skunk/).  
+Usable via command-line or as library in your Scala project targeting JVM or Native (see [usage example](#usage-example)).  
 Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway compatible history state to allow you to switch to Flyway if necessary.  
 You might also be able to simply switch from Flyway to Dumbo without any changes in migration files or the history state, depending on used Flyway features.
 
@@ -57,6 +58,17 @@ key=value
   ```
   executeInTransaction=false
   ```
+
+  ⚠️⚠️  
+  **NOTE**: Dumbo will attempt to execute each migration as a [simple query with multiple statements](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT) 
+  in a transaction by default (unlike Flyway which may decide not to do so).  
+  To disable it you need to set it explicitly using the configuration above.  
+
+  Use with care and try to avoid where possible. Partially applied migrations will require manual intervention.  
+  Dumbo is not going to update the history state in case of partial failures.  
+  If you re-run the migration process it will attempt to execute the script the same way it did before it failed.  
+  To fix it you'd need to roll back applied updates manually and then update the migration script and/or split it into multiple files before re-running the migration process.  
+  ⚠️⚠️  
 
 ## Usage example
 
