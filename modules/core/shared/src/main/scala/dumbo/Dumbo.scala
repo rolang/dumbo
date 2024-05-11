@@ -240,7 +240,7 @@ class Dumbo[F[_]: Sync: Console](
 
   // it's supposed to be prevented by IF NOT EXISTS clause when running concurrently
   // but it doesn't always seem to prevent it, maybe better to lock another table instead of catching those?
-  // https://www.postgresql.org/docs/15/errcodes-appendix.html
+  // https://www.postgresql.org/docs/current/errcodes-appendix.html
   private val duplicateErrorCodes = Set(
     "42710", // duplicate_object
     "23505", // unique_violation
