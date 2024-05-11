@@ -59,8 +59,8 @@ key=value
   executeInTransaction=false
   ```
 
-  ⚠️⚠️
-  **NOTE**: Dumbo will attempt to execute each migration as a [multi-query statement](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT) 
+  ⚠️⚠️  
+  **NOTE**: Dumbo will attempt to execute each migration as a [simple query with multiple statements](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT) 
   in a transaction by default (unlike Flyway which may decide not to do so).  
   To disable it you need to set it explicitly using the configuration above.  
 
