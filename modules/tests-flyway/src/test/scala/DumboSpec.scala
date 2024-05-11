@@ -77,7 +77,7 @@ trait DumboSpec extends ffstest.FTest {
       historyFlyway <- loadHistory(schema).map(h =>
                          db match {
                            case Db.Postgres11 | Db.Postgres16 => h
-                           // Flyway is not able to run it within a transaction and rollback, so it adds a bistory entry with success false in CockroachDB
+                           // Flyway is not able to run it within a transaction and rollback, so it adds a history entry with success false in CockroachDB
                            // going to ignore it in the test for now...
                            case Db.CockroachDb => h.filter(_.success == true)
                          }
@@ -183,7 +183,7 @@ trait DumboSpec extends ffstest.FTest {
       flywayHistory <- loadHistory(schemas.head).map(h =>
                          db match {
                            case Db.Postgres11 | Db.Postgres16 => h
-                           // Flyway is not able to run it within a transaction and rollback, so it adds a bistory entry with success false in CockroachDB
+                           // Flyway is not able to run it within a transaction and rollback, so it adds a history entry with success false in CockroachDB
                            // going to ignore it in the test for now...
                            case Db.CockroachDb => h.filter(_.success == true)
                          }
