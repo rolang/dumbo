@@ -71,7 +71,7 @@ trait DumboSpec extends ffstest.FTest {
       flywayRes <- flywayMigrate(schema, Path("db/test_failing_sql")).attempt
       _          = assert(flywayRes.isLeft)
       // Flyway does not provide more specific error message with CockroachDB in this case
-      _ = if (Set(Db.Postgres16, Db.Postgres11).contains(db)) {
+      _ = if (Set[Db](Db.Postgres16, Db.Postgres11).contains(db)) {
             assert(flywayRes.left.exists(_.getMessage().contains("relation \"test\" already exists")))
           }
       historyFlyway <- loadHistory(schema).map(h =>
