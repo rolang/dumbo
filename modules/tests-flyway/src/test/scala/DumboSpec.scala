@@ -71,12 +71,12 @@ trait DumboSpec extends ffstest.FTest {
       flywayRes <- flywayMigrate(schema, Path("db/test_failing_sql")).attempt
       _          = assert(flywayRes.isLeft)
       // Flyway does not provide more specific error message with CockroachDB in this case
-      _ = if (Set[Db](Db.Postgres16, Db.Postgres11).contains(db)) {
+      _ = if (Set[Db](Db.Postgres(16), Db.Postgres(11)).contains(db)) {
             assert(flywayRes.left.exists(_.getMessage().contains("relation \"test\" already exists")))
           }
       historyFlyway <- loadHistory(schema).map(h =>
                          db match {
-                           case Db.Postgres11 | Db.Postgres16 => h
+                           case Db.Postgres(_) => h
                            // Flyway is not able to run it within a transaction and rollback, so it adds a history entry with success false in CockroachDB
                            // going to ignore it in the test for now...
                            case Db.CockroachDb => h.filter(_.success == true)
@@ -182,7 +182,7 @@ trait DumboSpec extends ffstest.FTest {
       _          = assert(flywayRes.isLeft)
       flywayHistory <- loadHistory(schemas.head).map(h =>
                          db match {
-                           case Db.Postgres11 | Db.Postgres16 => h
+                           case Db.Postgres(_) => h
                            // Flyway is not able to run it within a transaction and rollback, so it adds a history entry with success false in CockroachDB
                            // going to ignore it in the test for now...
                            case Db.CockroachDb => h.filter(_.success == true)
@@ -218,21 +218,30 @@ trait DumboSpec extends ffstest.FTest {
     val withResources = dumboWithResources("db/test_non_transactional")
     val schema        = "schema_1"
 
-    if (db == Db.Postgres16)
+    // TODO: find a way to force Flyway to run the migration in a transaction on CockroachDb
+    if (db == Db.Postgres(11) || db == Db.Postgres(16))
       for {
-        flywayRes <- flywayMigrate(schema, path).attempt
-        _ =
-          assert(
-            flywayRes.left.exists(_.getMessage().contains("New enum values must be committed before they can be used"))
-          )
+        flywayRes     <- flywayMigrate(schema, path).attempt
         flywayHistory <- loadHistory(schema)
         _             <- dropSchemas
         dumboRes      <- dumboMigrate(schema, withResources).attempt
-        _ = assert(
-              dumboRes.left.exists(_.getMessage().contains("New enum values must be committed before they can be used"))
-            )
-        dumboHistory <- loadHistory(schema)
-        _             = assertEqualHistory(flywayHistory, dumboHistory)
+        dumboHistory  <- loadHistory(schema)
+        _              = assert(flywayRes.isLeft)
+        _              = assert(dumboRes.isLeft)
+        _ = List(
+              flywayRes.swap.toOption.get,
+              dumboRes.swap.toOption.get,
+            ).map(_.getMessage().toLowerCase().linesIterator).foreach { lines =>
+              db match {
+                case Db.Postgres(11) =>
+                  assert(lines.exists(_.matches(".*alter type .* cannot run inside a transaction block.*")))
+                case Db.Postgres(_) =>
+                  assert(lines.exists(_.matches(""".*unsafe use of new value ".*" of enum type.*""")))
+                case Db.CockroachDb =>
+                  assert(lines.exists(_.matches(""".*enum value ".*" is not yet public.*""")))
+              }
+            }
+        _ = assertEqualHistory(flywayHistory, dumboHistory)
       } yield ()
     else
       IO.println(
@@ -257,18 +266,17 @@ trait DumboSpec extends ffstest.FTest {
 
 sealed trait Db
 object Db {
-  case object Postgres11  extends Db
-  case object Postgres16  extends Db
-  case object CockroachDb extends Db
+  case class Postgres(version: Int) extends Db
+  case object CockroachDb           extends Db
 }
 
 class DumboFlywaySpecPostgresLatest extends DumboSpec {
-  override val db: Db            = Db.Postgres16
+  override val db: Db            = Db.Postgres(16)
   override val postgresPort: Int = 5433
 }
 
 class DumboFlywaySpecPostgres11 extends DumboSpec {
-  override val db: Db            = Db.Postgres11
+  override val db: Db            = Db.Postgres(11)
   override val postgresPort: Int = 5435
 }
 

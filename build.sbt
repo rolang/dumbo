@@ -323,6 +323,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .settings(
     publish / skip := true,
     Test / scalacOptions -= "-Werror",
+    Test / parallelExecution := true,
     libraryDependencies ++= Seq(
       "org.scalameta" %%% "munit"             % munitVersion,
       "org.typelevel" %%% "munit-cats-effect" % munitCEVersion,

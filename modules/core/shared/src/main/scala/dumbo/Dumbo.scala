@@ -403,7 +403,7 @@ object Dumbo extends internal.DumboPlatform {
     fs: ResourceReader[F]
   ): Stream[F, Either[String, ResourceFile]] =
     fs.list
-      .filter(f => f.value.endsWith(".sql") || f.value.endsWith(".sql.conf"))
+      .filter(f => f.value.endsWith(".sql"))
       .evalMap { path =>
         val confPath = path.append(".conf")
 

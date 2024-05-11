@@ -195,6 +195,25 @@ trait DumboSpec extends ffstest.FTest {
     } yield ()
   }
 
+  dbTest("Fail on non-transactional operations") {
+    val withResources = dumboWithResources("db/test_non_transactional")
+    val schema        = "schema_1"
+
+    for {
+      dumboRes <- dumboMigrate(schema, withResources).attempt
+      _         = assert(dumboRes.isLeft)
+      errLines  = dumboRes.swap.toOption.get.getMessage().linesIterator
+      _ = db match {
+            case Db.Postgres(11) =>
+              assert(errLines.exists(_.matches(".*ALTER TYPE .* cannot run inside a transaction block.*")))
+            case Db.Postgres(_) =>
+              assert(errLines.exists(_.matches(""".*Unsafe use of new value ".*" of enum type.*""")))
+            case Db.CockroachDb =>
+              assert(errLines.exists(_.matches(""".*Enum value ".*" is not yet public.*""")))
+          }
+    } yield ()
+  }
+
   {
     class TestConsole extends Console[IO] {
       val logs: AtomicReference[Vector[String]] = new AtomicReference(Vector.empty[String])
