@@ -28,11 +28,10 @@ trait DumboSpec extends ffstest.FTest {
   }
 
   test("Run multiple migrations concurrently") {
-    val schema = "schema_1"
+    dropSchemas >> (1 to 5).toList.traverse_ { _ =>
+      val schema = someSchemaName
 
-    (1 to 5).toList.traverse_ { _ =>
       for {
-        _       <- dropSchemas
         res     <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, dumboWithResources("db/test_1")))
         ranks    = res.flatMap(_.migrations.map(_.installedRank)).sorted
         _        = assertEquals(ranks, List(1, 2, 3))
@@ -43,7 +42,7 @@ trait DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Validate checksum with validation enabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -59,7 +58,7 @@ trait DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Validate description with validation enabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _   <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -86,7 +85,7 @@ trait DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Validate for missing files with validation enabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -104,7 +103,7 @@ trait DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Ignore missing files or missing checksum on validation disabled") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       _    <- dumboMigrate(schema, dumboWithResources("db/test_0"))
@@ -116,7 +115,7 @@ trait DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Fail with CopyNotSupportedException") {
-    val schema = "schema_1"
+    val schema = someSchemaName
 
     for {
       dumboResA <- dumboMigrate(schema, dumboWithResources("db/test_copy_from")).attempt
@@ -197,7 +196,7 @@ trait DumboSpec extends ffstest.FTest {
 
   dbTest("Fail on non-transactional operations") {
     val withResources = dumboWithResources("db/test_non_transactional")
-    val schema        = "schema_1"
+    val schema        = someSchemaName
 
     for {
       dumboRes <- dumboMigrate(schema, withResources).attempt

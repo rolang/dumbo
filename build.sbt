@@ -323,7 +323,6 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   .settings(
     publish / skip := true,
     Test / scalacOptions -= "-Werror",
-    Test / parallelExecution := true,
     libraryDependencies ++= Seq(
       "org.scalameta" %%% "munit"             % munitVersion,
       "org.typelevel" %%% "munit-cats-effect" % munitCEVersion,
@@ -355,7 +354,6 @@ lazy val testsFlyway = project
   .settings(
     publish / skip := true,
     Test / scalacOptions -= "-Werror",
-    Test / parallelExecution := true,
     libraryDependencies ++= Seq(
       "org.flywaydb"   % "flyway-core"                % flywayVersion,
       "org.flywaydb"   % "flyway-database-postgresql" % flywayVersion,

@@ -5,6 +5,7 @@
 package ffstest
 
 import scala.concurrent.duration.*
+import scala.util.Random
 
 import cats.data.ValidatedNec
 import cats.effect.{IO, Resource, std}
@@ -20,6 +21,8 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
   def postgresPort: Int = 5432
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
+
+  def someSchemaName = s"schema_${Random.alphanumeric.take(10).mkString}"
 
   lazy val connectionConfig: ConnectionConfig = ConnectionConfig(
     host = "localhost",
