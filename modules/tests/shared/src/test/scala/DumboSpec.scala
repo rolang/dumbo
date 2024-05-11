@@ -223,7 +223,7 @@ trait DumboSpec extends ffstest.FTest {
       for {
         _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(testConsole)
         _ = db match {
-              case Db.Postgres => assert(testConsole.logs.get().count(logMatch) >= 2)
+              case Db.Postgres(_) => assert(testConsole.logs.get().count(logMatch) >= 2)
               case Db.CockroachDb =>
                 assert(testConsole.logs.get().count(_.startsWith("Progress monitor is not supported")) == 1)
             }
@@ -234,16 +234,21 @@ trait DumboSpec extends ffstest.FTest {
 
 sealed trait Db
 object Db {
-  case object Postgres    extends Db
-  case object CockroachDb extends Db
+  case class Postgres(version: Int) extends Db
+  case object CockroachDb           extends Db
 }
 
-class DumboSpecPostgres extends DumboSpec {
-  override val db: Db            = Db.Postgres
+class DumboSpecPostgresLatest extends DumboSpec {
+  override val db: Db            = Db.Postgres(16)
   override val postgresPort: Int = 5432
+}
+
+class DumboSpecPostgres11 extends DumboSpec {
+  override val db: Db            = Db.Postgres(11)
+  override val postgresPort: Int = 5434
 }
 
 class DumboSpecCockroachDb extends DumboSpec {
   override val db: Db            = Db.CockroachDb
-  override val postgresPort: Int = 5434
+  override val postgresPort: Int = 5436
 }

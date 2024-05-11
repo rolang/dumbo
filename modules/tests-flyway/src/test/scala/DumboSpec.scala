@@ -8,7 +8,6 @@ import scala.io.AnsiColor
 
 import cats.data.NonEmptyList
 import cats.effect.IO
-import dumbo.Db.{CockroachDb, Postgres}
 import fs2.io.file.Path
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
@@ -72,15 +71,15 @@ trait DumboSpec extends ffstest.FTest {
       flywayRes <- flywayMigrate(schema, Path("db/test_failing_sql")).attempt
       _          = assert(flywayRes.isLeft)
       // Flyway does not provide more specific error message with CockroachDB in this case
-      _ = if (db == Db.Postgres) {
+      _ = if (Set(Db.Postgres16, Db.Postgres11).contains(db)) {
             assert(flywayRes.left.exists(_.getMessage().contains("relation \"test\" already exists")))
           }
       historyFlyway <- loadHistory(schema).map(h =>
                          db match {
-                           case Postgres => h
+                           case Db.Postgres11 | Db.Postgres16 => h
                            // Flyway is not able to run it within a transaction and rollback, so it adds a bistory entry with success false in CockroachDB
                            // going to ignore it in the test for now...
-                           case CockroachDb => h.filter(_.success == true)
+                           case Db.CockroachDb => h.filter(_.success == true)
                          }
                        )
       _        <- dropSchemas
@@ -183,10 +182,10 @@ trait DumboSpec extends ffstest.FTest {
       _          = assert(flywayRes.isLeft)
       flywayHistory <- loadHistory(schemas.head).map(h =>
                          db match {
-                           case Postgres => h
+                           case Db.Postgres11 | Db.Postgres16 => h
                            // Flyway is not able to run it within a transaction and rollback, so it adds a bistory entry with success false in CockroachDB
                            // going to ignore it in the test for now...
-                           case CockroachDb => h.filter(_.success == true)
+                           case Db.CockroachDb => h.filter(_.success == true)
                          }
                        )
       _            <- dropSchemas
@@ -219,7 +218,7 @@ trait DumboSpec extends ffstest.FTest {
     val withResources = dumboWithResources("db/test_non_transactional")
     val schema        = "schema_1"
 
-    if (db == Db.Postgres)
+    if (db == Db.Postgres16)
       for {
         flywayRes <- flywayMigrate(schema, path).attempt
         _ =
@@ -258,16 +257,22 @@ trait DumboSpec extends ffstest.FTest {
 
 sealed trait Db
 object Db {
-  case object Postgres    extends Db
+  case object Postgres11  extends Db
+  case object Postgres16  extends Db
   case object CockroachDb extends Db
 }
 
-class DumboFlywaySpecPostgres extends DumboSpec {
-  override val db: Db            = Db.Postgres
+class DumboFlywaySpecPostgresLatest extends DumboSpec {
+  override val db: Db            = Db.Postgres16
   override val postgresPort: Int = 5433
+}
+
+class DumboFlywaySpecPostgres11 extends DumboSpec {
+  override val db: Db            = Db.Postgres11
+  override val postgresPort: Int = 5435
 }
 
 class DumboFlywaySpecCockroachDb extends DumboSpec {
   override val db: Db            = Db.CockroachDb
-  override val postgresPort: Int = 5435
+  override val postgresPort: Int = 5437
 }

@@ -354,6 +354,7 @@ lazy val testsFlyway = project
   .settings(
     publish / skip := true,
     Test / scalacOptions -= "-Werror",
+    Test / parallelExecution := true,
     libraryDependencies ++= Seq(
       "org.flywaydb"   % "flyway-core"                % flywayVersion,
       "org.flywaydb"   % "flyway-database-postgresql" % flywayVersion,
