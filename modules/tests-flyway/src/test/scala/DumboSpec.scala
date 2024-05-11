@@ -97,9 +97,10 @@ trait DumboSpec extends ffstest.FTest {
   }
 
   dbTest("Dumbo is compatible with Flyway history state") {
-    val path: Path    = Path("db/test_1")
-    val withResources = dumboWithResources("db/test_1")
-    val defaultSchema = "test_a"
+    val path: Path     = Path("db/test_1")
+    val withResources  = dumboWithResources("db/test_1")
+    val withResourcesB = dumboWithResources("db/test_1_extended")
+    val defaultSchema  = "test_a"
 
     for {
       flywayRes <- flywayMigrate(defaultSchema, path)
@@ -109,12 +110,15 @@ trait DumboSpec extends ffstest.FTest {
       resDumbo  <- dumboMigrate(defaultSchema, withResources)
       _          = assertEquals(resDumbo.migrationsExecuted, 0)
       histB     <- loadHistory(defaultSchema)
-      _          = assertEquals(histA, histB) // history unchanged
+      _          = assertEquals(histA, histB)                                           // history unchanged
+      _         <- assertIO(dumboMigrate(defaultSchema, withResourcesB).map(_.migrationsExecuted), 1)
+      _         <- assertIO(loadHistory(defaultSchema).map(_.length), histB.length + 1) // history extended
     } yield ()
   }
 
   dbTest("Flyway is compatible with Dumbo history state") {
-    val path: Path    = Path("db/test_1")
+    val path          = Path("db/test_1")
+    val pathB         = Path("db/test_1_extended")
     val withResources = dumboWithResources("db/test_1")
     val defaultSchema = "test_a"
 
@@ -126,7 +130,9 @@ trait DumboSpec extends ffstest.FTest {
       _          = assert(flywayRes.success)
       _          = assertEquals(flywayRes.migrationsExecuted, 0)
       histB     <- loadHistory(defaultSchema)
-      _          = assertEquals(histA, histB) // history unchanged
+      _          = assertEquals(histA, histB)                                           // history unchanged
+      _         <- assertIO(flywayMigrate(defaultSchema, pathB).map(_.migrationsExecuted), 1)
+      _         <- assertIO(loadHistory(defaultSchema).map(_.length), histB.length + 1) // history extended
     } yield ()
   }
 

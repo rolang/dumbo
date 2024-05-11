@@ -235,9 +235,9 @@ lazy val skunkVersion = "1.0.0-M5"
 
 lazy val epollcatVersion = "0.1.6"
 
-lazy val munitVersion = "1.0.0-M11"
+lazy val munitVersion = "1.0.0-RC1"
 
-lazy val munitCEVersion = "2.0.0-M4"
+lazy val munitCEVersion = "2.0.0-RC1"
 
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
