@@ -157,6 +157,7 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
         scalas = Nil,
         javas = List(JavaSpec.temurin("21")),
         steps = List(
+          WorkflowStep.Checkout,
           WorkflowStep.Use(
             name = Some("Download command line linux build"),
             ref = UseRef.Public("actions", "download-artifact", "v4"),

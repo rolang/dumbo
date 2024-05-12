@@ -323,6 +323,9 @@ jobs:
         java: [temurin@21]
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Checkout current branch (fast)
+        uses: actions/checkout@v4
+
       - name: Download command line linux build
         uses: actions/download-artifact@v4
         with:
