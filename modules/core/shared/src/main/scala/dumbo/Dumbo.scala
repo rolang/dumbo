@@ -152,7 +152,7 @@ class Dumbo[F[_]: Sync: Console](
     for {
       _ <-
         Console[F].println(
-          s"""Migrating schema "$defaultSchema" to version ${source.versionRaw} - ${source.scriptDescription}"""
+          s"""Migrating schema "$defaultSchema" to version ${source.versionText} - ${source.scriptDescription}"""
             + s"${if (!source.executeInTransaction) " [non-transactional]" else ""}"
         )
 
@@ -180,9 +180,9 @@ class Dumbo[F[_]: Sync: Console](
                            )
                            .traverse_(session.executeDiscard(_))
                        }
-      _ <- Console[F].println(s"Migration to version ${source.versionRaw} - ${source.scriptDescription} completed")
+      _ <- Console[F].println(s"Migration to version ${source.versionText} - ${source.scriptDescription} completed")
     } yield HistoryEntry.New(
-      version = source.versionRaw,
+      version = source.versionText,
       description = source.scriptDescription,
       `type` = "SQL",
       script = source.path.fileName,
@@ -208,34 +208,75 @@ class Dumbo[F[_]: Sync: Console](
     session: Session[F],
     fs: ResourceReader[F],
     tableLockSupport: Boolean,
-  )(sourceFiles: List[ResourceFile]): F[Option[(HistoryEntry, List[ResourceFile])]] =
-    sourceFiles match {
-      case Nil => none.pure[F]
-      case _ =>
-        (for {
-          txn <- session.transaction
-          _   <- progressMonitor
-        } yield txn).use { _ =>
-          for {
-            _ <- if (tableLockSupport) lockTable(session, historyTable).void
-                 else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
-            latestInstalled <- session.unique(dumboHistory.findLatestInstalled).map(_.flatMap(_.sourceFileVersion))
-            result <- sourceFiles.dropWhile(s => latestInstalled.exists(s.version <= _)) match {
-                        case head :: tail =>
-                          // acquire a new session for non-transactional operation
-                          val transactSession: Resource[F, Session[F]] =
-                            if (head.executeInTransaction) Resource.pure(session) else sessionResource
+  )(
+    versioned: List[(ResourceVersion.Versioned, ResourceFile)],
+    repeatables: List[ResourceFile],
+  ): F[Option[(HistoryEntry, (List[(ResourceVersion.Versioned, ResourceFile)], List[ResourceFile]))]] =
+    if (versioned.isEmpty && repeatables.isEmpty)
+      none.pure[F]
+    else
+      (for {
+        txn <- session.transaction
+        _   <- progressMonitor
+      } yield txn).use { _ =>
+        for {
+          _ <- if (tableLockSupport) lockTable(session, historyTable).void
+               else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
+          res <- processVersioned(versioned, session, fs).flatMap {
+                   case Some((newEntry, files)) => (newEntry, (files, repeatables)).some.pure[F]
+                   case _ =>
+                     processRepeatables(repeatables, session, fs).flatMap {
+                       case Some((newEntry, files)) => (newEntry, (Nil, files)).some.pure[F]
+                       case _                       => none.pure[F]
+                     }
+                 }
+        } yield res
+      }
 
-                          transactSession
-                            .use(transact(head, fs, _))
-                            .flatMap { newEntry =>
-                              session.unique(dumboHistory.insertSQLEntry)(newEntry)
-                            }
-                            .map((_, tail).some)
-                        case _ => none.pure[F]
-                      }
-          } yield result
-        }
+  private def processVersioned(
+    versioned: List[(ResourceVersion.Versioned, ResourceFile)],
+    session: Session[F],
+    fs: ResourceReader[F],
+  ) = if (versioned.isEmpty)
+    none.pure[F]
+  else
+    for {
+      latestInstalled <- session.option(dumboHistory.latestVersionedInstalled)
+      latestInstalledV = latestInstalled.flatMap(_.sourceFileVersion)
+      result <- versioned.dropWhile { case (v, s) => latestInstalledV.exists(v <= _) } match {
+                  case (_, head) :: tail =>
+                    (if (head.executeInTransaction) Resource.pure(session) else sessionResource).use { s =>
+                      transact(head, fs, s)
+                        .flatMap(updateHistory(latestInstalled, s))
+                        .map((_, tail).some)
+                    }
+                  case _ => none.pure[F]
+                }
+    } yield result
+
+  private def processRepeatables(
+    repeatables: List[ResourceFile],
+    session: Session[F],
+    fs: ResourceReader[F],
+  ) = if (repeatables.isEmpty) none.pure[F]
+  else
+    for {
+      latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled)
+      res <- repeatables.filter { f =>
+               latestRepeatables.find(_.script == f.fileName).forall(_.checksum != Some(f.checksum))
+             } match {
+               case x :: xs =>
+                 (if (x.executeInTransaction) Resource.pure(session) else sessionResource).use { s =>
+                   transact(x, fs, s).flatMap(updateHistory(None, s)).map((_, xs).some)
+                 }
+               case Nil => none.pure[F]
+             }
+    } yield res
+
+  private def updateHistory(latestInstalled: Option[HistoryEntry], session: Session[F])(newEntry: HistoryEntry.New) =
+    latestInstalled match {
+      case Some(value) if !value.success => session.unique(dumboHistory.updateSQLEntry)(newEntry -> value.installedRank)
+      case _                             => session.unique(dumboHistory.insertSQLEntry)(newEntry)
     }
 
   // it's supposed to be prevented by IF NOT EXISTS clause when running concurrently
@@ -283,9 +324,13 @@ class Dumbo[F[_]: Sync: Console](
                            Console[F].println(s"Found ${sourceFiles.size} versioned migration files$inLocation")
                          }
                          _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
+                         (versioned, repeatables) = sourceFiles.map(f => (f.version, f)).partitionMap {
+                                                      case (v: ResourceVersion.Versioned, f) => Left((v, f))
+                                                      case (ResourceVersion.Repeatable, f)   => Right(f)
+                                                    }
                          migrationResult <-
                            Stream
-                             .unfoldEval(sourceFiles)(migrateToNext(session, resReader, tableLockSupport))
+                             .unfoldEval((versioned, repeatables))(migrateToNext(session, resReader, tableLockSupport))
                              .compile
                              .toList
                              .map(Dumbo.MigrationResult(_))
@@ -306,17 +351,23 @@ class Dumbo[F[_]: Sync: Console](
     history: List[HistoryEntry],
     sourceFiles: List[ResourceFile],
   ): ValidatedNec[DumboValidationException, Unit] = {
-    val sourceFilesMap = sourceFiles.map(s => (s.versionRaw, s)).toMap
+    val versionedMap = sourceFiles.collect {
+      case f @ ResourceFile(ResourceFileDescription(ResourceVersion.Versioned(v, _), _, _), _, _) => (v, f)
+    }.toMap
+
+    val repeatablesMap = sourceFiles.collect {
+      case f @ ResourceFile(ResourceFileDescription(ResourceVersion.Repeatable, _, p), _, _) => (p.fileName, f)
+    }.toMap
 
     history
       .filter(_.`type` == "SQL")
       .traverse { h =>
-        sourceFilesMap.get(h.version.getOrElse("")) match {
-          case None =>
-            new DumboValidationException(
-              s"Detected applied migration not resolved locally ${h.script}"
-            ).invalidNec[Unit]
-          case Some(value) if Some(value.checksum) != h.checksum =>
+        (versionedMap.get(h.version.getOrElse("")), repeatablesMap.get(h.script)) match {
+          case (None, None) =>
+            new DumboValidationException(s"Detected applied migration not resolved locally ${h.script}")
+              .invalidNec[Unit]
+
+          case (Some(value), _) if Some(value.checksum) != h.checksum =>
             new DumboValidationException(
               s"""|Validate failed: Migrations have failed validation
                   |Migration checksum mismatch for migration version ${h.version}
@@ -325,7 +376,7 @@ class Dumbo[F[_]: Sync: Console](
                   |Either revert the changes to the migration ${value.description.fileName} or update the checksum in $historyTable""".stripMargin
             ).invalidNec[Unit]
 
-          case Some(value) if value.scriptDescription != h.description =>
+          case (Some(value), _) if value.scriptDescription != h.description =>
             new DumboValidationException(
               s"""|Migration description mismatch for migration version ${h.version}
                   |-> Applied to database : ${value.scriptDescription}

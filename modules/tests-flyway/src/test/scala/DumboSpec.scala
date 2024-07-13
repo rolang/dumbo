@@ -37,6 +37,9 @@ trait DumboSpec extends ffstest.FTest {
     assertEquals(histA.map(toCompare), histB.map(toCompare))
   }
 
+  def assertEqualSQLHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit =
+    assertEqualHistory(histA.filter(_.`type` != "SCHEMA"), histB.filter(_.`type` != "SCHEMA"))
+
   dbTest("Same behaviour on changed checksum") {
     val schema = "schema_1"
 
@@ -104,7 +107,7 @@ trait DumboSpec extends ffstest.FTest {
     for {
       flywayRes <- flywayMigrate(defaultSchema, path)
       _          = assert(flywayRes.success)
-      _          = assertEquals(flywayRes.migrationsExecuted, 3)
+      _          = assertEquals(flywayRes.migrationsExecuted, 4)
       histA     <- loadHistory(defaultSchema)
       resDumbo  <- dumboMigrate(defaultSchema, withResources)
       _          = assertEquals(resDumbo.migrationsExecuted, 0)
@@ -123,7 +126,7 @@ trait DumboSpec extends ffstest.FTest {
 
     for {
       resDumbo  <- dumboMigrate(defaultSchema, withResources)
-      _          = assertEquals(resDumbo.migrationsExecuted, 3)
+      _          = assertEquals(resDumbo.migrationsExecuted, 4)
       histA     <- loadHistory(defaultSchema)
       flywayRes <- flywayMigrate(defaultSchema, path)
       _          = assert(flywayRes.success)
@@ -132,6 +135,27 @@ trait DumboSpec extends ffstest.FTest {
       _          = assertEquals(histA, histB)                                           // history unchanged
       _         <- assertIO(flywayMigrate(defaultSchema, pathB).map(_.migrationsExecuted), 1)
       _         <- assertIO(loadHistory(defaultSchema).map(_.length), histB.length + 1) // history extended
+    } yield ()
+  }
+
+  dbTest("Run repeatable migrations at the end and on changes") {
+    val sD = "schema_dumbo"
+    val sF = "schema_flyway"
+
+    for {
+      _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable")).map(_.migrations.length), 2)
+      _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable")).map(_.migrationsExecuted), 2)
+      _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
+
+      // history unchanged on re-run
+      _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable")).map(_.migrations.length), 0)
+      _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable")).map(_.migrationsExecuted), 0)
+      _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
+
+      // history updated on modified repeatable migration
+      _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable_modified")).map(_.migrations.length), 1)
+      _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable_modified")).map(_.migrationsExecuted), 1)
+      _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
     } yield ()
   }
 
@@ -144,8 +168,8 @@ trait DumboSpec extends ffstest.FTest {
     for {
       resFlywayA <- flywayMigrate(schemaA, path)
       resFlywayB <- flywayMigrate(schemaB, path)
-      _           = assertEquals(resFlywayA.migrationsExecuted, 3)
-      _           = assertEquals(resFlywayB.migrationsExecuted, 3)
+      _           = assertEquals(resFlywayA.migrationsExecuted, 4)
+      _           = assertEquals(resFlywayB.migrationsExecuted, 4)
       resDumboA  <- dumboMigrate(schemaA, withResources)
       resDumboB  <- dumboMigrate(schemaB, withResources)
       _           = assertEquals(resDumboA.migrationsExecuted, 0)
@@ -162,8 +186,8 @@ trait DumboSpec extends ffstest.FTest {
     for {
       resDumboA <- dumboMigrate(schemaA, withResources)
       resDumboB <- dumboMigrate(schemaB, withResources)
-      _          = assertEquals(resDumboA.migrationsExecuted, 3)
-      _          = assertEquals(resDumboB.migrationsExecuted, 3)
+      _          = assertEquals(resDumboA.migrationsExecuted, 4)
+      _          = assertEquals(resDumboB.migrationsExecuted, 4)
 
       resFlywayA <- flywayMigrate(schemaA, path)
       resFlywayB <- flywayMigrate(schemaB, path)
