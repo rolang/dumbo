@@ -262,12 +262,12 @@ class DumboSpecPostgresLatest extends DumboSpec {
   override val postgresPort: Int = 5432
 }
 
-// class DumboSpecPostgres11 extends DumboSpec {
-//   override val db: Db            = Db.Postgres(11)
-//   override val postgresPort: Int = 5434
-// }
+class DumboSpecPostgres11 extends DumboSpec {
+  override val db: Db            = Db.Postgres(11)
+  override val postgresPort: Int = 5434
+}
 
-// class DumboSpecCockroachDb extends DumboSpec {
-//   override val db: Db            = Db.CockroachDb
-//   override val postgresPort: Int = 5436
-// }
+class DumboSpecCockroachDb extends DumboSpec {
+  override val db: Db            = Db.CockroachDb
+  override val postgresPort: Int = 5436
+}
