@@ -24,7 +24,7 @@ final case class HistoryEntry(
 
   override def compare(that: HistoryEntry): Int = installedRank.compare(that.installedRank)
 
-  def sourceFileVersion: Option[ResourceVersion.Versioned] =
+  def resourceVersion: Option[ResourceVersion.Versioned] =
     version.flatMap(ResourceVersion.Versioned.fromString(_).toOption)
 }
 

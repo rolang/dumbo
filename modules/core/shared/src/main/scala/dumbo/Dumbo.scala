@@ -249,8 +249,15 @@ class Dumbo[F[_]: Sync: Console](
   else
     for {
       latestInstalled <- session.option(dumboHistory.latestVersionedInstalled)
-      latestInstalledV = latestInstalled.flatMap(_.sourceFileVersion)
-      result <- versioned.dropWhile { case (v, _) => latestInstalledV.exists(v <= _) } match {
+      latestInstalledV = latestInstalled.map(l => (l.resourceVersion, l.success))
+      result <- versioned.dropWhile { case (v, _) =>
+                  latestInstalledV match {
+                    // drop versions applied successfully
+                    // retry the version which was not applied successfully
+                    case Some((Some(lv), success)) => if (success) v <= lv else v < lv
+                    case _                         => false
+                  }
+                } match {
                   case (_, x) :: xs =>
                     // acquire a new session for non-transactional operation
                     val transactSession: Resource[F, Session[F]] =
@@ -373,7 +380,7 @@ class Dumbo[F[_]: Sync: Console](
             new DumboValidationException(s"Detected applied migration not resolved locally ${h.script}")
               .invalidNec[Unit]
 
-          case Some(value) if Some(value.checksum) != h.checksum =>
+          case Some(value) if Some(value.checksum) != h.checksum && h.success =>
             new DumboValidationException(
               s"""|Validate failed: Migrations have failed validation
                   |Migration checksum mismatch for migration version ${h.version}

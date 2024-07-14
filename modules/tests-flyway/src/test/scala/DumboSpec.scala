@@ -138,6 +138,24 @@ trait DumboSpec extends ffstest.FTest {
     } yield ()
   }
 
+  dbTest("Dumbo updates history entry of latest unsucessfully applied migration by Flyway") {
+    // run on CockroachDb only just because it was the easiest way to reproduce a history record for an unsuccessfully applied migration with Flyway
+    if (db == Db.CockroachDb) {
+      val schema = "schema_1"
+
+      for {
+        _        <- flywayMigrate(schema, Path("db/test_failing_sql")).attempt
+        historyA <- loadHistory(schema)
+        _         = assertEquals(historyA.last.success, false)
+        _         = assertEquals(historyA.length, 3)
+        _        <- dumboMigrate(schema, dumboWithResources("db/test_failing_sql_fix"))
+        historyB <- loadHistory(schema)
+        _         = assertEquals(historyB.length, 3)
+        _         = assertEquals(historyB.last.success, true) // last entry was updated
+      } yield ()
+    } else IO.println(s"${AnsiColor.YELLOW}Skipped${AnsiColor.RESET}")
+  }
+
   dbTest("Run repeatable migrations at the end and on changes") {
     val sD = "schema_dumbo"
     val sF = "schema_flyway"
