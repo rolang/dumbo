@@ -10,6 +10,25 @@ import scala.util.{Success, Try}
 import cats.data.NonEmptyList
 import cats.implicits.*
 
+final case class ResourceFiles(
+  versioned: List[ResourceFileVersioned],
+  repeatable: List[ResourceFile],
+) {
+  def length: Int       = versioned.length + repeatable.length
+  def nonEmpty: Boolean = versioned.nonEmpty || repeatable.nonEmpty
+}
+
+object ResourceFiles {
+  def fromResources(resources: List[ResourceFile]): ResourceFiles = {
+    val (versioned, repeatable) = resources.partitionMap {
+      case f @ ResourceFile(ResourceFileDescription(v: ResourceVersion.Versioned, _, _), _, _) => Left((v, f))
+      case f @ ResourceFile(ResourceFileDescription(ResourceVersion.Repeatable, _, _), _, _)   => Right(f)
+    }
+
+    ResourceFiles(versioned, repeatable)
+  }
+}
+
 final case class ResourceFile(
   description: ResourceFileDescription,
   checksum: Int,
@@ -143,8 +162,8 @@ sealed trait ResourceVersion extends Ordered[ResourceVersion] {
 }
 
 object ResourceVersion {
-  case object Repeatable                                             extends ResourceVersion
-  final case class Versioned(raw: String, parts: NonEmptyList[Long]) extends ResourceVersion {
+  case object Repeatable                                              extends ResourceVersion
+  final case class Versioned(text: String, parts: NonEmptyList[Long]) extends ResourceVersion {
     // strip trailing 0
     // 1.0 -> 1
     // 0.01.0.0 -> 0.1
@@ -166,7 +185,7 @@ object ResourceVersion {
         case Success(Array(x, xs*)) =>
           Right(
             Versioned(
-              raw = version,
+              text = version,
               parts = NonEmptyList.of(x, xs*),
             )
           )

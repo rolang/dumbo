@@ -2,8 +2,6 @@
 // This software is licensed under the MIT License (MIT).
 // For more information see LICENSE or https://opensource.org/licenses/MIT
 
-package object dumbo {
-  type Matchable = Any
+package dumbo
 
-  type ResourceFileVersioned = (ResourceVersion.Versioned, ResourceFile)
-}
+type ResourceFileVersioned = (ResourceVersion.Versioned, ResourceFile)
