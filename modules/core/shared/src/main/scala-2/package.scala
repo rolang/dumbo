@@ -5,5 +5,6 @@
 package object dumbo {
   type Matchable = Any
 
-  type ResourceFileVersioned = (ResourceVersion.Versioned, ResourceFile)
+  type ResourceFileVersioned  = (ResourceVersion.Versioned, ResourceFile)
+  type ResourceFileRepeatable = (ResourceVersion.Repeatable, ResourceFile)
 }

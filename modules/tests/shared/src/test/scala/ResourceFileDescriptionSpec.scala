@@ -9,6 +9,7 @@ import cats.data.NonEmptyList
 class ResourceFileDescriptionSpec extends ffstest.FTest {
   test("extract source file version from file path") {
     val fileNames = List(
+      "R__c_view.sql",
       "R__a_view.sql",
       "V-003__test.sql",
       "V002__test.sql",
@@ -44,8 +45,10 @@ class ResourceFileDescriptionSpec extends ffstest.FTest {
       ResourceVersion.Versioned("2013.01.15.11.35.56", NonEmptyList.of(2013L, 1L, 15L, 11L, 35L, 56L)),
       ResourceVersion.Versioned("2013.2.15.11.35.56", NonEmptyList.of(2013L, 2L, 15L, 11L, 35L, 56L)),
       ResourceVersion.Versioned("20130115113556", NonEmptyList.of(20130115113556L)),
-      ResourceVersion.Repeatable,
-      ResourceVersion.Repeatable,
+      // repeatables are sorted by description
+      ResourceVersion.Repeatable("a view"),
+      ResourceVersion.Repeatable("b view"),
+      ResourceVersion.Repeatable("c view"),
     )
 
     assertEquals(versions.sorted.map(_.version), expected)

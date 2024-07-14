@@ -135,7 +135,7 @@ trait DumboSpec extends ffstest.FTest {
                   (ResourceVersion.Versioned("1", NonEmptyList.of(1)), "V1__test.sql"),
                   (ResourceVersion.Versioned("2", NonEmptyList.of(2)), "V2__test_b.sql"),
                   (ResourceVersion.Versioned("3", NonEmptyList.of(3)), "V3__test_c.sql"),
-                  (ResourceVersion.Repeatable, "R__test_view.sql"),
+                  (ResourceVersion.Repeatable("test view"), "R__test_view.sql"),
                 )
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))

@@ -12,7 +12,7 @@ import cats.implicits.*
 
 final case class ResourceFiles(
   versioned: List[ResourceFileVersioned],
-  repeatable: List[ResourceFile],
+  repeatable: List[ResourceFileRepeatable],
 ) {
   def length: Int       = versioned.length + repeatable.length
   def nonEmpty: Boolean = versioned.nonEmpty || repeatable.nonEmpty
@@ -21,8 +21,8 @@ final case class ResourceFiles(
 object ResourceFiles {
   def fromResources(resources: List[ResourceFile]): ResourceFiles = {
     val (versioned, repeatable) = resources.partitionMap {
-      case f @ ResourceFile(ResourceFileDescription(v: ResourceVersion.Versioned, _, _), _, _) => Left((v, f))
-      case f @ ResourceFile(ResourceFileDescription(ResourceVersion.Repeatable, _, _), _, _)   => Right(f)
+      case f @ ResourceFile(ResourceFileDescription(v: ResourceVersion.Versioned, _, _), _, _)  => Left((v, f))
+      case f @ ResourceFile(ResourceFileDescription(v: ResourceVersion.Repeatable, _, _), _, _) => Right((v, f))
     }
 
     ResourceFiles(versioned, repeatable)
@@ -124,8 +124,13 @@ object ResourceFileDescription {
           )
         }
       case repeatable(name) =>
+        val description = name.replace("_", " ")
         Right(
-          ResourceFileDescription(version = ResourceVersion.Repeatable, description = name.replace("_", " "), path = p)
+          ResourceFileDescription(
+            version = ResourceVersion.Repeatable(description),
+            description = description,
+            path = p,
+          )
         )
       case other => Left(s"Invalid file name $other")
     }
@@ -147,22 +152,22 @@ sealed trait ResourceVersion extends Ordered[ResourceVersion] {
       }
 
     (this, that) match {
-      case (Repeatable, Versioned(_, _)) => 1
-      case (Versioned(_, _), Repeatable) => -1
-      case (Repeatable, Repeatable)      => 0
+      case (Repeatable(_), Versioned(_, _))             => 1
+      case (Versioned(_, _), Repeatable(_))             => -1
+      case (Repeatable(descThis), Repeatable(descThat)) => descThis.compare(descThat)
       case (Versioned(_, thisParts), Versioned(_, thatParts)) =>
         cmprVersioned(thisParts.toList, thatParts.toList)
     }
   }
 
   def versionText: Option[String] = this match {
-    case Repeatable          => None
+    case Repeatable(_)       => None
     case Versioned(plain, _) => Some(plain)
   }
 }
 
 object ResourceVersion {
-  case object Repeatable                                              extends ResourceVersion
+  case class Repeatable(description: String)                          extends ResourceVersion
   final case class Versioned(text: String, parts: NonEmptyList[Long]) extends ResourceVersion {
     // strip trailing 0
     // 1.0 -> 1

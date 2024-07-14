@@ -273,17 +273,17 @@ class Dumbo[F[_]: Sync: Console](
     } yield result
 
   private def processRepeatables(
-    repeatables: List[ResourceFile],
+    repeatables: List[ResourceFileRepeatable],
     session: Session[F],
     fs: ResourceReader[F],
-  ): F[Option[(HistoryEntry, List[ResourceFile])]] = if (repeatables.isEmpty) none.pure[F]
+  ): F[Option[(HistoryEntry, List[ResourceFileRepeatable])]] = if (repeatables.isEmpty) none.pure[F]
   else
     for {
       latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled)
-      res <- repeatables.filter { f =>
+      res <- repeatables.filter { case (_, f) =>
                latestRepeatables.find(_.script == f.fileName).forall(_.checksum != Some(f.checksum))
              } match {
-               case x :: xs =>
+               case (_, x) :: xs =>
                  // acquire a new session for non-transactional operation
                  val transactSession: Resource[F, Session[F]] =
                    if (x.executeInTransaction) Resource.pure(session) else sessionResource
@@ -370,7 +370,7 @@ class Dumbo[F[_]: Sync: Console](
     resources: ResourceFiles,
   ): ValidatedNec[DumboValidationException, Unit] = {
     val versionedMap: Map[String, ResourceFile] = resources.versioned.map { case (v, f) => (v.text, f) }.toMap
-    val repeatablesFileNames: Set[String]       = resources.repeatable.map(_.fileName).toSet
+    val repeatablesFileNames: Set[String]       = resources.repeatable.map(_._2.fileName).toSet
 
     history
       .filter(_.`type` == "SQL")
