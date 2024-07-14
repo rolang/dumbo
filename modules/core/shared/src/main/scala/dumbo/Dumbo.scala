@@ -151,7 +151,7 @@ class Dumbo[F[_]: Sync: Console](
   private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] = {
     val toVersion = source.versionText match {
       case Some(v) => s"to version $v - ${source.scriptDescription}"
-      case _       => s"to ${source.scriptDescription}"
+      case _       => s"with repeatable migration ${source.scriptDescription}"
     }
 
     for {
