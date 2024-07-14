@@ -209,46 +209,50 @@ class Dumbo[F[_]: Sync: Console](
     fs: ResourceReader[F],
     tableLockSupport: Boolean,
   )(
-    versioned: List[(ResourceVersion.Versioned, ResourceFile)],
-    repeatables: List[ResourceFile],
-  ): F[Option[(HistoryEntry, (List[(ResourceVersion.Versioned, ResourceFile)], List[ResourceFile]))]] =
-    if (versioned.isEmpty && repeatables.isEmpty)
-      none.pure[F]
-    else
-      (for {
-        txn <- session.transaction
-        _   <- progressMonitor
-      } yield txn).use { _ =>
-        for {
-          _ <- if (tableLockSupport) lockTable(session, historyTable).void
-               else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
-          res <- processVersioned(versioned, session, fs).flatMap {
-                   case Some((newEntry, files)) => (newEntry, (files, repeatables)).some.pure[F]
-                   case _ =>
-                     processRepeatables(repeatables, session, fs).flatMap {
-                       case Some((newEntry, files)) => (newEntry, (Nil, files)).some.pure[F]
-                       case _                       => none.pure[F]
-                     }
-                 }
-        } yield res
-      }
-
+    resources: (List[ResourceVersioned], List[ResourceFile])
+  ): F[MigrateToNextResult] =
+    resources match {
+      case (Nil, Nil) => none.pure[F]
+      case (versioned, repeatables) =>
+        (for {
+          txn <- session.transaction
+          _   <- progressMonitor
+        } yield txn).use { _ =>
+          for {
+            _ <- if (tableLockSupport) lockTable(session, historyTable).void
+                 else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
+            res <- processVersioned(versioned, session, fs).flatMap {
+                     case Some((newEntry, files)) => (newEntry, (files, repeatables)).some.pure[F]
+                     case _ =>
+                       processRepeatables(repeatables, session, fs).flatMap[MigrateToNextResult] {
+                         case Some((newEntry, files)) =>
+                           (newEntry, (versionedNil, files)).some.pure[F]
+                         case _ => none.pure[F]
+                       }
+                   }
+          } yield res
+        }
+    }
   private def processVersioned(
     versioned: List[(ResourceVersion.Versioned, ResourceFile)],
     session: Session[F],
     fs: ResourceReader[F],
-  ) = if (versioned.isEmpty)
+  ): F[Option[(HistoryEntry, List[ResourceVersioned])]] = if (versioned.isEmpty)
     none.pure[F]
   else
     for {
       latestInstalled <- session.option(dumboHistory.latestVersionedInstalled)
       latestInstalledV = latestInstalled.flatMap(_.sourceFileVersion)
-      result <- versioned.dropWhile { case (v, s) => latestInstalledV.exists(v <= _) } match {
-                  case (_, head) :: tail =>
-                    (if (head.executeInTransaction) Resource.pure(session) else sessionResource).use { s =>
-                      transact(head, fs, s)
+      result <- versioned.dropWhile { case (v, _) => latestInstalledV.exists(v <= _) } match {
+                  case (_, x) :: xs =>
+                    // acquire a new session for non-transactional operation
+                    val transactSession: Resource[F, Session[F]] =
+                      if (x.executeInTransaction) Resource.pure(session) else sessionResource
+
+                    transactSession.use { s =>
+                      transact(x, fs, s)
                         .flatMap(updateHistory(latestInstalled, s))
-                        .map((_, tail).some)
+                        .map((_, xs).some)
                     }
                   case _ => none.pure[F]
                 }
@@ -258,7 +262,7 @@ class Dumbo[F[_]: Sync: Console](
     repeatables: List[ResourceFile],
     session: Session[F],
     fs: ResourceReader[F],
-  ) = if (repeatables.isEmpty) none.pure[F]
+  ): F[Option[(HistoryEntry, List[ResourceFile])]] = if (repeatables.isEmpty) none.pure[F]
   else
     for {
       latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled)
@@ -266,7 +270,11 @@ class Dumbo[F[_]: Sync: Console](
                latestRepeatables.find(_.script == f.fileName).forall(_.checksum != Some(f.checksum))
              } match {
                case x :: xs =>
-                 (if (x.executeInTransaction) Resource.pure(session) else sessionResource).use { s =>
+                 // acquire a new session for non-transactional operation
+                 val transactSession: Resource[F, Session[F]] =
+                   if (x.executeInTransaction) Resource.pure(session) else sessionResource
+
+                 transactSession.use { s =>
                    transact(x, fs, s).flatMap(updateHistory(None, s)).map((_, xs).some)
                  }
                case Nil => none.pure[F]
@@ -324,13 +332,13 @@ class Dumbo[F[_]: Sync: Console](
                            Console[F].println(s"Found ${sourceFiles.size} versioned migration files$inLocation")
                          }
                          _ <- if (validateOnMigrate) validationGuard(session, sourceFiles) else ().pure[F]
-                         (versioned, repeatables) = sourceFiles.map(f => (f.version, f)).partitionMap {
-                                                      case (v: ResourceVersion.Versioned, f) => Left((v, f))
-                                                      case (ResourceVersion.Repeatable, f)   => Right(f)
-                                                    }
+                         resources = sourceFiles.map(f => (f.version, f)).partitionMap {
+                                       case (v: ResourceVersion.Versioned, f) => Left((v, f))
+                                       case (ResourceVersion.Repeatable, f)   => Right(f)
+                                     }
                          migrationResult <-
                            Stream
-                             .unfoldEval((versioned, repeatables))(migrateToNext(session, resReader, tableLockSupport))
+                             .unfoldEval(resources)(migrateToNext(session, resReader, tableLockSupport))
                              .compile
                              .toList
                              .map(Dumbo.MigrationResult(_))
@@ -399,6 +407,11 @@ class Dumbo[F[_]: Sync: Console](
 }
 
 object Dumbo extends internal.DumboPlatform {
+  private type ResourceVersioned = (ResourceVersion.Versioned, ResourceFile)
+  private type MigrateToNextResult =
+    Option[(HistoryEntry, (List[ResourceVersioned], List[ResourceFile]))]
+
+  private val versionedNil: List[ResourceVersioned] = List.empty[ResourceVersioned]
 
   object defaults {
     val defaultSchema: String      = "public"

@@ -67,7 +67,7 @@ class ResourceFileDescriptionSpec extends ffstest.FTest {
     val versionsDistinct = versions.distinct.collect {
       case ResourceFileDescription(v: ResourceVersion.Versioned, _, _) => v
     }
-    val versionsSet = versions.toSet.collect { case ResourceFileDescription(v: ResourceVersion.Versioned, _, _) => v }
+    val versionsSet = versions.collect { case ResourceFileDescription(v: ResourceVersion.Versioned, _, _) => v }.toSet
 
     assertEquals(versions.length, 5)
 

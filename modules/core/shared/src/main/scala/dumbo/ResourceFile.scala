@@ -127,12 +127,13 @@ sealed trait ResourceVersion extends Ordered[ResourceVersion] {
         case (Nil, Nil)                         => 0
       }
 
-    (this, that) match
+    (this, that) match {
       case (Repeatable, Versioned(_, _)) => 1
       case (Versioned(_, _), Repeatable) => -1
       case (Repeatable, Repeatable)      => 0
       case (Versioned(_, thisParts), Versioned(_, thatParts)) =>
         cmprVersioned(thisParts.toList, thatParts.toList)
+    }
   }
 
   def versionText: Option[String] = this match {

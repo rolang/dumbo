@@ -93,7 +93,7 @@ class History(tableName: String) {
           RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
   }
 
-  val updateSQLEntry: Query[(HistoryEntry.New, Int), HistoryEntry] =
+  val updateSQLEntry: Query[HistoryEntry.New *: Int *: EmptyTuple, HistoryEntry] =
     sql"""UPDATE #${tableName} 
           SET (version, description, type, script, checksum, execution_time, success, installed_on, installed_by) =
           (${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER) WHERE installed_rank = $int4
