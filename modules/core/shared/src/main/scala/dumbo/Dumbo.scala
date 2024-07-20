@@ -357,13 +357,19 @@ class Dumbo[F[_]: Sync: Console](
                              .map(Dumbo.MigrationResult(_))
                        } yield migrationResult
 
-    _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse).headOption match {
-           case None => Console[F].println(s"Schema ${defaultSchema} is up to date. No migration necessary")
-           case Some(latestInstalled) =>
-             val version = latestInstalled.version.getOrElse(latestInstalled.description)
+    _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse) match {
+           case Nil => Console[F].println(s"Schema ${defaultSchema} is up to date. No migration necessary")
+           case history =>
+             val verLog = history.collectFirst { case HistoryEntry(_, Some(v), _, _, _, _, _, _, _, _) => v }
+               .map(v => s", now at version $v")
+               .getOrElse("")
+
+             val execMs          = history.foldLeft(0L)(_ + _.executionTimeMs)
+             val execDurationLog = s"(execution time ${formatDuration(execMs)})"
+
              Console[F]
                .println(
-                 s"Successfully applied ${migrationResult.migrations.length} migrations, now at version $version"
+                 s"Successfully applied ${migrationResult.migrations.length} migrations$verLog $execDurationLog"
                )
          }
   } yield migrationResult
@@ -436,6 +442,13 @@ object Dumbo extends internal.DumboPlatform {
 
   def withFilesIn[F[_]: Files](dir: Path): DumboWithResourcesPartiallyApplied[F] =
     new DumboWithResourcesPartiallyApplied[F](ResourceReader.fileFs(dir))
+
+  // input duration in milliseconds
+  // output in format mm:ss.ms e.g. 00:00.000s
+  private[dumbo] def formatDuration(ms: Long): String = {
+    val pos = math.max(ms, 0L)
+    String.format("%02d:%02d.%03d", pos / 60000, (pos / 1000) % 60, (pos % 1000)) + "s"
+  }
 
   private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F], table: String) =
     session.transaction.use(_ =>

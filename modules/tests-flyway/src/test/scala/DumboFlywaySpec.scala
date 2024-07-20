@@ -12,7 +12,7 @@ import fs2.io.file.Path
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 
-trait DumboSpec extends ffstest.FTest {
+trait DumboFlywaySpec extends ffstest.FTest {
   def db: Db
 
   def flywayMigrate(defaultSchema: String, sourcesPath: Path, schemas: List[String] = Nil): IO[MigrateResult] = IO(
@@ -312,17 +312,17 @@ object Db {
   case object CockroachDb           extends Db
 }
 
-class DumboFlywaySpecPostgresLatest extends DumboSpec {
+class DumboFlywaySpecPostgresLatest extends DumboFlywaySpec {
   override val db: Db            = Db.Postgres(16)
   override val postgresPort: Int = 5433
 }
 
-class DumboFlywaySpecPostgres11 extends DumboSpec {
+class DumboFlywaySpecPostgres11 extends DumboFlywaySpec {
   override val db: Db            = Db.Postgres(11)
   override val postgresPort: Int = 5435
 }
 
-class DumboFlywaySpecCockroachDb extends DumboSpec {
+class DumboFlywaySpecCockroachDb extends DumboFlywaySpec {
   override val db: Db            = Db.CockroachDb
   override val postgresPort: Int = 5437
 }
