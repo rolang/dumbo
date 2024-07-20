@@ -137,7 +137,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
             case Db.Postgres(_) =>
               assert(errLines.exists(_.matches(""".*Unsafe use of new value ".*" of enum type.*""")))
             case Db.CockroachDb =>
-              assert(errLines.exists(_.matches(""".*Enum value ".*" is not yet public.*""")))
+              assert(errLines.exists(_.matches(".*enum value is not yet public.")))
           }
     } yield ()
   }
