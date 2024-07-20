@@ -279,9 +279,12 @@ class Dumbo[F[_]: Sync: Console](
   ): F[Option[(HistoryEntry, List[ResourceFileRepeatable])]] = if (repeatables.isEmpty) none.pure[F]
   else
     for {
-      latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled)
+      latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled).map(_.toMap)
       res <- repeatables.filter { case (_, f) =>
-               latestRepeatables.find(_.script == f.fileName).forall(_.checksum != Some(f.checksum))
+               latestRepeatables.get(f.scriptDescription) match {
+                 case Some(checksum) => checksum != f.checksum
+                 case _              => true
+               }
              } match {
                case (_, x) :: xs =>
                  // acquire a new session for non-transactional operation

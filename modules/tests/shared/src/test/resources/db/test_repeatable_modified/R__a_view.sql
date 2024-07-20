@@ -1,0 +1,1 @@
+DROP VIEW people_b;

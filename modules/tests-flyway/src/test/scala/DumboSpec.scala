@@ -156,13 +156,13 @@ trait DumboSpec extends ffstest.FTest {
     } else IO.println(s"${AnsiColor.YELLOW}Skipped${AnsiColor.RESET}")
   }
 
-  dbTest("Run repeatable migrations at the end and on changes") {
+  dbTest("Run repeatable migrations at the end and on changes in order by description") {
     val sD = "schema_dumbo"
     val sF = "schema_flyway"
 
     for {
-      _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable")).map(_.migrations.length), 2)
-      _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable")).map(_.migrationsExecuted), 2)
+      _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable")).map(_.migrations.length), 3)
+      _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable")).map(_.migrationsExecuted), 3)
       _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
 
       // history unchanged on re-run
@@ -171,8 +171,8 @@ trait DumboSpec extends ffstest.FTest {
       _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
 
       // history updated on modified repeatable migration
-      _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable_modified")).map(_.migrations.length), 1)
-      _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable_modified")).map(_.migrationsExecuted), 1)
+      _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable_modified")).map(_.migrations.length), 2)
+      _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable_modified")).map(_.migrationsExecuted), 2)
       _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
     } yield ()
   }

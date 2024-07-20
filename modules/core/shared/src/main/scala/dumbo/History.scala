@@ -79,10 +79,11 @@ class History(tableName: String) {
           FROM #${tableName} WHERE version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1"""
       .query(HistoryEntry.codec)
 
-  val latestRepeatablesInstalled: Query[Void, HistoryEntry] =
-    sql"""SELECT DISTINCT ON (script) #${HistoryEntry.fieldNames}
-          FROM #${tableName} WHERE type = 'SQL' AND version IS NULL ORDER BY script, installed_rank DESC"""
-      .query(HistoryEntry.codec)
+  val latestRepeatablesInstalled: Query[Void, (String, Int)] =
+    sql"""SELECT DISTINCT ON (description) description, checksum::INT4
+          FROM #${tableName} WHERE type = 'SQL' AND version IS NULL 
+          ORDER BY description ASC, installed_rank DESC"""
+      .query(varchar(200) ~ int4)
 
   val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = {
     val nextRank = sql"(SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM #${tableName})"
