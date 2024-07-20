@@ -10,16 +10,35 @@ import scala.util.{Success, Try}
 import cats.data.NonEmptyList
 import cats.implicits.*
 
+final case class ResourceFiles(
+  versioned: List[ResourceFileVersioned],
+  repeatable: List[ResourceFileRepeatable],
+) {
+  def length: Int       = versioned.length + repeatable.length
+  def nonEmpty: Boolean = versioned.nonEmpty || repeatable.nonEmpty
+}
+
+object ResourceFiles {
+  def fromResources(resources: List[ResourceFile]): ResourceFiles = {
+    val (versioned, repeatable) = resources.partitionMap {
+      case f @ ResourceFile(ResourceFileDescription(v: ResourceVersion.Versioned, _, _), _, _)  => Left((v, f))
+      case f @ ResourceFile(ResourceFileDescription(v: ResourceVersion.Repeatable, _, _), _, _) => Right((v, f))
+    }
+
+    ResourceFiles(versioned, repeatable)
+  }
+}
+
 final case class ResourceFile(
   description: ResourceFileDescription,
   checksum: Int,
   configs: Set[ResourceFileConfig],
 ) extends Ordered[ResourceFile] {
-  def versionRaw: String           = description.version.raw
-  def version: ResourceFileVersion = description.version
-  def scriptDescription: String    = description.description
-  def path: ResourceFilePath       = description.path
-  def fileName: String             = description.path.fileName
+  def versionText: Option[String] = description.version.versionText
+  def version: ResourceVersion    = description.version
+  def scriptDescription: String   = description.description
+  def path: ResourceFilePath      = description.path
+  def fileName: String            = description.path.fileName
 
   override def hashCode: Int = version.hashCode
 
@@ -30,7 +49,7 @@ final case class ResourceFile(
     case _               => false
   }
 
-  def executeInTransaction: Boolean =
+  val executeInTransaction: Boolean =
     configs.collectFirst { case ResourceFileConfig.ExecuteInTransaction(v) => v }.getOrElse(true)
 }
 
@@ -74,7 +93,7 @@ object ResourceFileConfig {
 }
 
 final case class ResourceFileDescription(
-  version: ResourceFileVersion,
+  version: ResourceVersion,
   description: String,
   path: ResourceFilePath,
 ) extends Ordered[ResourceFileDescription] {
@@ -92,66 +111,90 @@ final case class ResourceFileDescription(
 
 object ResourceFileDescription {
   def fromResourcePath(p: ResourceFilePath): Either[String, ResourceFileDescription] = {
-    val pattern = "^V([^_]+)__(.+)\\.sql$".r
+    val versioned  = "^V([^_]+)__(.+)\\.sql$".r
+    val repeatable = "^R__(.+)\\.sql$".r
 
     p.fileName.toString match {
-      case pattern(version, name) =>
-        ResourceFileVersion.fromString(version).map { v =>
+      case versioned(version, name) =>
+        ResourceVersion.Versioned.fromString(version).map { v =>
           ResourceFileDescription(
             version = v,
             description = name.replace("_", " "),
             path = p,
           )
         }
-
+      case repeatable(name) =>
+        val description = name.replace("_", " ")
+        Right(
+          ResourceFileDescription(
+            version = ResourceVersion.Repeatable(description),
+            description = description,
+            path = p,
+          )
+        )
       case other => Left(s"Invalid file name $other")
     }
   }
 }
 
-final case class ResourceFileVersion(
-  raw: String,
-  parts: NonEmptyList[Long],
-) extends Ordered[ResourceFileVersion] {
-  def compare(that: ResourceFileVersion): Int = {
+sealed trait ResourceVersion extends Ordered[ResourceVersion] {
+  import ResourceVersion.*
+
+  def compare(that: ResourceVersion): Int = {
     @tailrec
-    def cmpr(a: List[Long], b: List[Long]): Int =
+    def cmprVersioned(a: List[Long], b: List[Long]): Int =
       (a, b) match {
-        case (xa :: xsa, xb :: xsb) if xa == xb => cmpr(xsa, xsb)
+        case (xa :: xsa, xb :: xsb) if xa == xb => cmprVersioned(xsa, xsb)
         case (xa :: _, xb :: _)                 => xa.compare(xb)
         case (xa :: _, Nil)                     => xa.compare(0L)
         case (Nil, xb :: _)                     => xb.compare(0L)
         case (Nil, Nil)                         => 0
       }
 
-    cmpr(this.parts.toList, that.parts.toList)
+    (this, that) match {
+      case (Repeatable(_), Versioned(_, _))             => 1
+      case (Versioned(_, _), Repeatable(_))             => -1
+      case (Repeatable(descThis), Repeatable(descThat)) => descThis.compare(descThat)
+      case (Versioned(_, thisParts), Versioned(_, thatParts)) =>
+        cmprVersioned(thisParts.toList, thatParts.toList)
+    }
   }
 
-  // strip trailing 0
-  // 1.0 -> 1
-  // 0.01.0.0 -> 0.1
-  override def toString: String =
-    parts.reverse.toList.dropWhile(_ <= 0).map(_.toString).reverse.mkString(".")
-
-  // 1.0 should yield same hash code as 1 or 1.0.0 etc.
-  override def hashCode: Int = parts.reverse.foldLeft("")(_ + _.toString).toInt
-
-  override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
-    case s: ResourceFileVersion => this.compare(s) == 0
-    case _                      => false
+  def versionText: Option[String] = this match {
+    case Repeatable(_)       => None
+    case Versioned(plain, _) => Some(plain)
   }
 }
 
-object ResourceFileVersion {
-  def fromString(version: String): Either[String, ResourceFileVersion] =
-    Try(version.split('.').map(_.toLong)) match {
-      case Success(Array(x, xs*)) =>
-        Right(
-          ResourceFileVersion(
-            raw = version,
-            parts = NonEmptyList.of(x, xs*),
-          )
-        )
-      case _ => Left(s"Invalid version $version")
+object ResourceVersion {
+  case class Repeatable(description: String)                          extends ResourceVersion
+  final case class Versioned(text: String, parts: NonEmptyList[Long]) extends ResourceVersion {
+    // strip trailing 0
+    // 1.0 -> 1
+    // 0.01.0.0 -> 0.1
+    override def toString: String =
+      parts.reverse.toList.dropWhile(_ <= 0).map(_.toString).reverse.mkString(".")
+
+    // 1.0 should yield same hash code as 1 or 1.0.0 etc.
+    override def hashCode: Int = parts.reverse.foldLeft("")(_ + _.toString).toInt
+
+    override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
+      case s: Versioned => this.compare(s) == 0
+      case _            => false
     }
+  }
+
+  object Versioned {
+    def fromString(version: String): Either[String, Versioned] =
+      Try(version.split('.').map(_.toLong)) match {
+        case Success(Array(x, xs*)) =>
+          Right(
+            Versioned(
+              text = version,
+              parts = NonEmptyList.of(x, xs*),
+            )
+          )
+        case _ => Left(s"Invalid version $version")
+      }
+  }
 }

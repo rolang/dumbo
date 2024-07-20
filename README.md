@@ -14,9 +14,11 @@ You might also be able to simply switch from Flyway to Dumbo without any changes
 
 ## Currently supports:
 
-### Versioned Migrations as specified by Flyway
+### Versioned Migrations
 
-![Versioned Migrations](./docs/assets/versioned_migrations.png)
+As described in _[Flyway Versioned Migrations docs](https://documentation.red-gate.com/fd/migrations-184127470.html#Migrations-VersionedMigrations)_:
+
+The most common type of migration is a versioned migration. Each versioned migration has a version, a description and a checksum. The version must be unique. The description is purely informative for you to be able to remember what each migration does. The checksum is there to detect accidental changes. Versioned migrations are applied in order exactly once.
 
 Each versioned migration must be assigned a unique version.  
  A simple increasing integer or any version is valid as long as it conforms to the usual dotted notation:
@@ -29,6 +31,26 @@ Each versioned migration must be assigned a unique version.
 - 20130115113556
 - 2013.1.15.11.35.56
 - 2013.01.15.11.35.56
+
+![Versioned Migrations](./docs/assets/versioned_migrations.png)
+
+### Repeatable Migrations
+
+As described in _[Flyway Repeatable Migrations docs](https://documentation.red-gate.com/fd/migrations-184127470.html#Migrations-RepeatableMigrations)_:
+
+Repeatable migrations have a description and a checksum, but no version. Instead of being run just once, they are (re-)applied every time their checksum changes.
+
+![Repeatable Migrations](./docs/assets/repeatable_migrations.png)
+
+This is very useful for managing database objects whose definition can then simply be maintained in a single file in version control. They are typically used for
+ 
+(Re-)creating views/procedures/functions/packages/...
+Bulk reference data reinserts
+Within a single migration run, repeatable migrations are always applied last, after all pending versioned migrations have been executed. 
+Repeatable migrations are applied in the order of their description.
+ 
+It is your responsibility to ensure the same repeatable migration can be applied multiple times. This usually involves making use of CREATE OR REPLACE clauses in your DDL statements.
+
 
 ### Script Config Files
 

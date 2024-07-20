@@ -28,12 +28,12 @@ services:
       POSTGRES_USER: root
       POSTGRES_HOST_AUTH_METHOD: trust
   cockroachdb_1:
-    image: cockroachdb/cockroach:v23.2.4
+    image: cockroachdb/cockroach:v24.1.2
     ports:
       - "5436:26257"
     command: start-single-node --insecure
   cockroachdb_2:
-    image: cockroachdb/cockroach:v23.2.4
+    image: cockroachdb/cockroach:v24.1.2
     ports:
       - "5437:26257"
     command: start-single-node --insecure

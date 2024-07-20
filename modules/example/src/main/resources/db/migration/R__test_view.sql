@@ -1,0 +1,1 @@
+CREATE OR REPLACE VIEW test_view AS SELECT key_a, key_b FROM test_v3;

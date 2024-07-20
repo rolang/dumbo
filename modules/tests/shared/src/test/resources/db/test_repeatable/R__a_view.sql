@@ -1,0 +1,1 @@
+CREATE OR REPLACE VIEW people_a AS SELECT id, name FROM person;

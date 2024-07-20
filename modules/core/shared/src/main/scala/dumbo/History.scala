@@ -24,12 +24,13 @@ final case class HistoryEntry(
 
   override def compare(that: HistoryEntry): Int = installedRank.compare(that.installedRank)
 
-  def sourceFileVersion: Option[ResourceFileVersion] = version.flatMap(ResourceFileVersion.fromString(_).toOption)
+  def resourceVersion: Option[ResourceVersion.Versioned] =
+    version.flatMap(ResourceVersion.Versioned.fromString(_).toOption)
 }
 
 object HistoryEntry {
   final case class New(
-    version: String,
+    version: Option[String],
     description: String,
     `type`: String,
     script: String,
@@ -40,7 +41,7 @@ object HistoryEntry {
 
   object New {
     val codec: Codec[New] =
-      (varchar(50) *: varchar(200) *: varchar(20) *: varchar(1000) *: int4.opt *: int4 *: bool)
+      (varchar(50).opt *: varchar(200) *: varchar(20) *: varchar(1000) *: int4.opt *: int4 *: bool)
         .to[New]
   }
 
@@ -73,9 +74,16 @@ class History(tableName: String) {
     sql"""SELECT #${HistoryEntry.fieldNames}
           FROM #${tableName} ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
 
-  val findLatestInstalled: Query[Void, Option[HistoryEntry]] =
+  val latestVersionedInstalled: Query[Void, HistoryEntry] =
     sql"""SELECT #${HistoryEntry.fieldNames}
-          FROM #${tableName} ORDER BY installed_rank DESC LIMIT 1""".query(HistoryEntry.codec.opt)
+          FROM #${tableName} WHERE version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1"""
+      .query(HistoryEntry.codec)
+
+  val latestRepeatablesInstalled: Query[Void, (String, Int)] =
+    sql"""SELECT DISTINCT ON (description) description, checksum::INT4
+          FROM #${tableName} WHERE type = 'SQL' AND version IS NULL 
+          ORDER BY description ASC, installed_rank DESC"""
+      .query(varchar(200) ~ int4)
 
   val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = {
     val nextRank = sql"(SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM #${tableName})"
@@ -85,6 +93,12 @@ class History(tableName: String) {
           VALUES ($nextRank, ${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER)
           RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
   }
+
+  val updateSQLEntry: Query[HistoryEntry.New *: Int *: EmptyTuple, HistoryEntry] =
+    sql"""UPDATE #${tableName} 
+          SET (version, description, type, script, checksum, execution_time, success, installed_on, installed_by) =
+          (${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER) WHERE installed_rank = $int4
+          RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
 
   val insertSchemaEntry: Command[String] =
     sql"""INSERT INTO #${tableName}
