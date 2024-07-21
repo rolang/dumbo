@@ -70,7 +70,7 @@ ThisBuild / githubWorkflowJobSetup ++= Seq(
 )
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
-    List("Test/copyResources; check"),
+    List("Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll"),
     name = Some("Check scalafix/scalafmt lints"),
     cond = Some(
       "matrix.java == 'temurin@21' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')"
@@ -195,9 +195,8 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   cond = Some("matrix.project == 'rootJVM'"),
 )
 
-addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
-addCommandAlias("fix", "; all scalafixAll; all scalafmtSbt scalafmtAll")
-addCommandAlias("check", "; scalafmtSbtCheck; scalafmtCheckAll; scalafixAll --check")
+addCommandAlias("fix", "; +Test/copyResources; +scalafixAll; +scalafmtAll; scalafmtSbt")
+addCommandAlias("check", "; +Test/copyResources; +scalafixAll --check; +scalafmtCheckAll; scalafmtSbtCheck")
 
 lazy val commonSettings = List(
   // Headers
@@ -365,11 +364,12 @@ lazy val testsFlyway = project
 
 lazy val example = project
   .in(file("modules/example"))
-  .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
+  .enablePlugins(NoPublishPlugin)
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
-    Compile / run / fork := true,
-    publish / skip       := true,
+    Compile / run / fork  := true,
+    publish / skip        := true,
+    Compile / headerCheck := Nil,
     scalacOptions -= "-Werror",
   )
