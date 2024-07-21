@@ -148,9 +148,9 @@ object ExampleApp extends IOApp.Simple {
       connection = ConnectionConfig(
         host = "localhost",
         port = 5432,
-        user = "postgres",
+        user = "root",
         database = "postgres",
-        password = Some("postgres"),
+        password = None,
         ssl = skunk.SSL.None,
       )
     )
@@ -161,10 +161,10 @@ object ExampleApp extends IOApp.Simple {
 }
 ```
 
-To run the example, start a Postgres server via docker:
+To run the example, start a Postgres server via docker compose from provided docker-compose.yaml:
 
 ```shell
- docker run -p 5432:5432 --rm --name dumbo -e POSTGRES_PASSWORD=postgres postgres:16-alpine
+docker compose up pg_latest_1
 ```
 
 Execute the example via [scala-cli](https://scala-cli.virtuslab.org):
