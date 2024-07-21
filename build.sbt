@@ -369,7 +369,8 @@ lazy val example = project
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
-    Compile / run / fork := true,
-    publish / skip       := true,
+    Compile / run / fork  := true,
+    publish / skip        := true,
+    Compile / headerCheck := Nil,
     scalacOptions -= "-Werror",
   )
