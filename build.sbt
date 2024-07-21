@@ -365,7 +365,7 @@ lazy val testsFlyway = project
 
 lazy val example = project
   .in(file("modules/example"))
-  .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
+  .enablePlugins(NoPublishPlugin)
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(

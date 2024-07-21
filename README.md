@@ -1,6 +1,6 @@
 # Dumbo
 
-[![Sonatype Releases](https://img.shields.io/nexus/r/https/oss.sonatype.org/dev.rolang/dumbo_3.svg?label=Sonatype%20Release)](https://oss.sonatype.org/content/repositories/releases/dev/rolang/dumbo_3/)
+![Maven Central Version](https://img.shields.io/maven-central/v/dev.rolang/dumbo_3)
 [![Sonatype Snapshots](https://img.shields.io/nexus/s/https/oss.sonatype.org/dev.rolang/dumbo_3.svg?label=Sonatype%20Snapshot)](https://oss.sonatype.org/content/repositories/snapshots/dev/rolang/dumbo_3/)
 [![dumbo Scala version support](https://index.scala-lang.org/rolang/dumbo/dumbo/latest-by-scala-version.svg?platform=native0.4)](https://index.scala-lang.org/rolang/dumbo/dumbo)
 [![dumbo Scala version support](https://index.scala-lang.org/rolang/dumbo/dumbo/latest-by-scala-version.svg?platform=jvm)](https://index.scala-lang.org/rolang/dumbo/dumbo)
@@ -99,7 +99,7 @@ For usage via command line see [command-line](#command-line) section.
 In a sbt project dumbo can be added like:
 
 ```scala
-libraryDependencies += "dev.rolang" %% "dumbo" % "0.3.x"
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.4.x"
 ```
 
 _For compatibility with skunk `0.6.x` / natchez / Scala 2.12.x use release series `0.0.x`_:
@@ -124,6 +124,7 @@ example
       resources
         db
           migration
+            R__test_view.sql
             V1__test.sql
             V3__test_c.sql
             V2__test_b.sql
@@ -132,48 +133,9 @@ example
 The migration can be executed like:
 
 ```scala
-import cats.effect.{IO, IOApp}
-import dumbo.{ConnectionConfig, Dumbo}
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-
-object ExampleApp extends IOApp.Simple {
-  override def run: IO[Unit] = Dumbo
-    .withResourcesIn[IO]("db/migration")
-    .apply(
-      connection = ConnectionConfig(
-        host = "localhost",
-        port = 5432,
-        user = "postgres",
-        database = "postgres",
-        password = Some("postgres"),
-        ssl = skunk.SSL.None, // skunk.SSL config, default is skunk.SSL.None
-      ),
-      defaultSchema = "public",
-    )
-    .runMigration
-    .flatMap { result =>
-      IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
-    }
-}
-```
-
-To run the example locally with docker and sbt, start a Postgres docker container:
-
-```shell
- docker run -p 5432:5432 --rm --name dumbo -e POSTGRES_PASSWORD=postgres postgres:15-alpine
-```
-
-Run example with sbt:
-
-```shell
-sbt 'example/run'
-```
-
-Or run via [scala-cli](https://scala-cli.virtuslab.org/):
-```scala
 //> using scala 3.3.3
-//> using resourceDir modules/example/src/main/resources
-//> using dep "dev.rolang::dumbo::0.3.1"
+//> using resourceDir ../resources
+//> using dep "dev.rolang::dumbo::0.4.0"
 
 import cats.effect.{IO, IOApp}
 import dumbo.{ConnectionConfig, Dumbo}
@@ -196,6 +158,23 @@ object ExampleApp extends IOApp.Simple:
     .flatMap { result =>
       IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
     }
+```
+
+To run the example, start a Postgres server via docker:
+
+```shell
+ docker run -p 5432:5432 --rm --name dumbo -e POSTGRES_PASSWORD=postgres postgres:16-alpine
+```
+
+Execute the example via [scala-cli](https://scala-cli.virtuslab.org):
+```shell
+scala-cli modules/example/src/main/scala/ExampleApp.scala
+```
+
+or via [sbt](https://www.scala-sbt.org):
+
+```shell
+sbt 'example/run'
 ```
 
 ## Configurations
