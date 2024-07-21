@@ -32,7 +32,7 @@ ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
 )
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
-ThisBuild / tlCiScalafixCheck          := false
+ThisBuild / tlCiScalafixCheck          := true
 
 lazy val llvmVersion  = "17"
 lazy val brewFormulas = Set("s2n", "utf8proc")
@@ -196,7 +196,7 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
 )
 
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
-addCommandAlias("fix", "; all scalafixAll; all scalafmtSbt scalafmtAll")
+addCommandAlias("fix", "; +Test/copyResources; all scalafixAll; all scalafmtSbt scalafmtAll")
 addCommandAlias("check", "; scalafmtSbtCheck; scalafmtCheckAll; scalafixAll --check")
 
 lazy val commonSettings = List(
@@ -369,6 +369,7 @@ lazy val example = project
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
+    crossScalaVersions    := Seq(`scala-3`),
     Compile / run / fork  := true,
     publish / skip        := true,
     Compile / headerCheck := Nil,

@@ -111,6 +111,10 @@ jobs:
         if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-latest'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' headerCheckAll scalafmtCheckAll 'project /' scalafmtSbtCheck
 
+      - name: Check scalafix lints
+        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-latest'
+        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'scalafixAll --check'
+
       - name: nativeLink
         if: matrix.project == 'rootNative'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' Test/nativeLink
@@ -400,5 +404,5 @@ jobs:
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
         with:
-          modules-ignore: dumbo_3 dumbo_2.13 testsflyway_3 testsflyway_2.13 dumbo_3 dumbo_2.13 dumbo_3 dumbo_2.13 tests_3 tests_2.13 example_3 example_2.13 tests_native0.4_3 tests_native0.4_2.13
+          modules-ignore: dumbo_3 dumbo_2.13 testsflyway_3 testsflyway_2.13 dumbo_3 dumbo_2.13 dumbo_3 dumbo_2.13 tests_3 tests_2.13 example_3 tests_native0.4_3 tests_native0.4_2.13
           configs-ignore: test scala-tool scala-doc-tool test-internal
