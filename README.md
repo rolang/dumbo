@@ -326,7 +326,7 @@ To run the example migrations in this repository, run from repository's root dir
 1. Boot up a Postgres instance
 
 ```shell
-docker compose up pg_1
+docker compose up pg_latest_1
 ```
 
 2. Run example migration
@@ -335,8 +335,7 @@ docker compose up pg_1
 docker run --net="host" \
   -v ./modules/example/src/main/resources/db/migration:/migration \
   rolang/dumbo:latest-alpine \
-  -user=postgres \
-  -password=postgres \
+  -user=root \
   -url=postgresql://localhost:5432/postgres \
   -location=/migration \
   migrate
