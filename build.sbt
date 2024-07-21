@@ -369,7 +369,6 @@ lazy val example = project
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
-    crossScalaVersions    := Seq(`scala-3`),
     Compile / run / fork  := true,
     publish / skip        := true,
     Compile / headerCheck := Nil,

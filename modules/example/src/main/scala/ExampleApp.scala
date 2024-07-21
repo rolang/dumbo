@@ -6,7 +6,7 @@ import cats.effect.{IO, IOApp}
 import dumbo.{ConnectionConfig, Dumbo}
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
-object ExampleApp extends IOApp.Simple:
+object ExampleApp extends IOApp.Simple {
   def run = Dumbo
     .withResourcesIn[IO]("db/migration")
     .apply(
@@ -23,3 +23,4 @@ object ExampleApp extends IOApp.Simple:
     .flatMap { result =>
       IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
     }
+}
