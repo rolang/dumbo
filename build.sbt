@@ -32,7 +32,7 @@ ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
 )
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
-ThisBuild / tlCiScalafixCheck          := true
+ThisBuild / tlCiScalafixCheck          := false
 
 lazy val llvmVersion  = "17"
 lazy val brewFormulas = Set("s2n", "utf8proc")
@@ -70,7 +70,7 @@ ThisBuild / githubWorkflowJobSetup ++= Seq(
 )
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
-    List("Test/copyResources; check"),
+    List("Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll"),
     name = Some("Check scalafix/scalafmt lints"),
     cond = Some(
       "matrix.java == 'temurin@21' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')"
@@ -195,9 +195,8 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   cond = Some("matrix.project == 'rootJVM'"),
 )
 
-addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
-addCommandAlias("fix", "; +Test/copyResources; all scalafixAll; all scalafmtSbt scalafmtAll")
-addCommandAlias("check", "; scalafmtSbtCheck; scalafmtCheckAll; scalafixAll --check")
+addCommandAlias("fix", "; +Test/copyResources; +scalafixAll; +scalafmtAll; scalafmtSbt")
+addCommandAlias("check", "; +Test/copyResources; +scalafixAll --check; +scalafmtCheckAll; scalafmtSbtCheck")
 
 lazy val commonSettings = List(
   // Headers
