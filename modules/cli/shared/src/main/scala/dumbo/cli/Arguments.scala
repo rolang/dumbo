@@ -11,7 +11,7 @@ import scala.util.Try
 
 import dumbo.Dumbo.defaults
 import fs2.io.file.Path
-import skunk.SSL
+import dumbo.ConnectionConfig
 
 final case class Arguments(
   commands: List[Command],
@@ -103,13 +103,13 @@ enum Config[T](val key: String, val desc: String, val parse: String => Either[St
       )
 
   case Ssl
-      extends Config[SSL](
+      extends Config[ConnectionConfig.SSL](
         key = "-ssl",
         desc = "SSL mode to use: \"none\", \"trusted\" or \"system\". Default is \"none\"",
         {
-          case "none"    => Right(skunk.SSL.None)
-          case "trusted" => Right(skunk.SSL.Trusted)
-          case "system"  => Right(skunk.SSL.System)
+          case "none"    => Right(ConnectionConfig.SSL.None)
+          case "trusted" => Right(ConnectionConfig.SSL.Trusted)
+          case "system"  => Right(ConnectionConfig.SSL.System)
           case other     => Left(s"Invalid ssl option $other")
         },
       )

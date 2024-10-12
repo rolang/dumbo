@@ -52,17 +52,17 @@ class CliSpec extends FunSuite {
     val res = dumbo.cli.Dumbo.dumboFromConfigs(minValidConfig)
 
     assert(res.isRight)
-    val dmb = res.toOption.get
+    val (dmb, connection) = res.toOption.get
     assertEquals(dmb.allSchemas, Set("public"))
     assertEquals(dmb.historyTable, "public.flyway_schema_history")
     assertEquals(dmb.validateOnMigrate, true)
     assertEquals(dmb.resReader.location, Some("/abd/efg"))
-    assertEquals(dmb.connection.database, "test_db")
-    assertEquals(dmb.connection.host, "localhost")
-    assertEquals(dmb.connection.port, dumbo.Dumbo.defaults.port)
-    assertEquals(dmb.connection.ssl, skunk.SSL.None)
-    assertEquals(dmb.connection.user, "pg_user")
-    assertEquals(dmb.connection.password, None)
+    assertEquals(connection.database, "test_db")
+    assertEquals(connection.host, "localhost")
+    assertEquals(connection.port, dumbo.Dumbo.defaults.port)
+    assertEquals(connection.ssl, dumbo.ConnectionConfig.SSL.None)
+    assertEquals(connection.user, "pg_user")
+    assertEquals(connection.password, None)
   }
 
   test("create dumbo instance with all configs") {
@@ -80,17 +80,17 @@ class CliSpec extends FunSuite {
     val res = dumbo.cli.Dumbo.dumboFromConfigs(configs)
 
     assert(res.isRight)
-    val dmb = res.toOption.get
+    val (dmb, connection) = res.toOption.get
     assertEquals(dmb.allSchemas, Set("schema1", "schema2"))
     assertEquals(dmb.historyTable, "schema1.some_table")
     assertEquals(dmb.validateOnMigrate, false)
     assertEquals(dmb.resReader.location, Some("/abd/efg"))
-    assertEquals(dmb.connection.database, "test_db")
-    assertEquals(dmb.connection.host, "127.0.0.1")
-    assertEquals(dmb.connection.port, 5555)
-    assertEquals(dmb.connection.ssl, skunk.SSL.Trusted)
-    assertEquals(dmb.connection.user, "pg_user_v2")
-    assertEquals(dmb.connection.password, Some("abc*&\\'^%$#=@!}{\""))
+    assertEquals(connection.database, "test_db")
+    assertEquals(connection.host, "127.0.0.1")
+    assertEquals(connection.port, 5555)
+    assertEquals(connection.ssl, dumbo.ConnectionConfig.SSL.Trusted)
+    assertEquals(connection.user, "pg_user_v2")
+    assertEquals(connection.password, Some("abc*&\\'^%$#=@!}{\""))
   }
 
   test("fail to create dumbo instance from invalid configs") {

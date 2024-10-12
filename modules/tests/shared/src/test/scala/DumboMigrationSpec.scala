@@ -4,16 +4,11 @@
 
 package dumbo
 
-import java.nio.charset.Charset
-import java.util.concurrent.atomic.AtomicReference
-
 import scala.concurrent.duration.*
 
-import cats.Show
 import cats.data.Validated.Invalid
-import cats.effect.IO
-import cats.effect.std.Console
 import cats.implicits.*
+import ffstest.TestConsole
 
 trait DumboMigrationSpec extends ffstest.FTest {
   def db: Db
@@ -142,17 +137,59 @@ trait DumboMigrationSpec extends ffstest.FTest {
     } yield ()
   }
 
+  dbTest("Fail on non-transactional operations") {
+    val withResources = dumboWithResources("db/test_non_transactional")
+    val schema        = someSchemaName
+
+    for {
+      dumboRes <- dumboMigrate(schema, withResources).attempt
+      _         = assert(dumboRes.isLeft)
+      errLines  = dumboRes.swap.toOption.get.getMessage().linesIterator
+      _ = db match {
+            case Db.Postgres(11) =>
+              assert(errLines.exists(_.matches(".*ALTER TYPE .* cannot run inside a transaction block.*")))
+            case Db.Postgres(_) =>
+              assert(errLines.exists(_.matches(""".*Unsafe use of new value ".*" of enum type.*""")))
+            case Db.CockroachDb =>
+              assert(errLines.exists(_.matches(".*enum value is not yet public.")))
+          }
+    } yield ()
+  }
+
+  dbTest("schemas are included in the search path") {
+    val withResources = dumboWithResources("db/test_search_path")
+    val schemas       = List("schema_1", "schema_2")
+
+    for {
+      dumboRes <- dumboMigrate(schemas.head, withResources, schemas.tail).attempt
+      _         = assert(dumboRes.isRight)
+      history  <- loadHistory(schemas.head)
+      _         = assert(history.length != 2)
+    } yield ()
+  }
+
+  dbTest("warn if schemas are not included in the search path for custom sessions") {
+    val withResources = dumboWithResources("db/test_search_path")
+    val schemas       = List("schema_1")
+    val testConsole   = new TestConsole
+    val warningMsg    = "WARNING: Following schemas are not included in the search path: schema_1"
+
+    def migrateBySession(params: Map[String, String] = Map.empty) =
+      dumboMigrateWithSession(schemas.head, withResources, session(params))(testConsole).attempt
+
+    for {
+      dumboRes <- migrateBySession()
+      _         = assert(dumboRes.isLeft)
+      _         = assert(testConsole.logs.get().exists(_.contains(warningMsg)))
+      _         = testConsole.flush()
+      // succeed without warning if search_path is set
+      dumboResB <- migrateBySession(Map("search_path" -> "schema_1"))
+      _          = assert(dumboResB.isRight)
+      _          = assert(!testConsole.logs.get().exists(_.contains(warningMsg)))
+    } yield ()
+  }
+
   {
-    class TestConsole extends Console[IO] {
-      val logs: AtomicReference[Vector[String]] = new AtomicReference(Vector.empty[String])
-
-      override def readLineWithCharset(charset: Charset): IO[String] = ???
-      override def print[A](a: A)(implicit S: Show[A]): IO[Unit]     = ???
-      override def println[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO(logs.getAndUpdate(_ :+ S.show(a))).void
-      override def error[A](a: A)(implicit S: Show[A]): IO[Unit]     = IO.println(S.show(a))
-      override def errorln[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))
-    }
-
     val withResources                = dumboWithResources("db/test_long_running")
     def logMatch(s: String): Boolean = s.startsWith("Awaiting query with pid")
 

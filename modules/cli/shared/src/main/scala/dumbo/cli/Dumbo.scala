@@ -11,7 +11,6 @@ import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
 import dumbo.exception.DumboValidationException
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-import skunk.SSL
 
 object Dumbo extends dumbo.internal.PlatformApp {
   private def printHelp(cmd: Option[Command] = None) = {
@@ -55,7 +54,9 @@ object Dumbo extends dumbo.internal.PlatformApp {
     IO.println(help)
   }
 
-  private[dumbo] def dumboFromConfigs(configs: List[(Config[?], String)]): Either[String, dumbo.Dumbo[IO]] = {
+  private[dumbo] def dumboFromConfigs(
+    configs: List[(Config[?], String)]
+  ): Either[String, (dumbo.Dumbo[IO], dumbo.ConnectionConfig)] = {
     def collectConfig[T](config: Config[T]): Option[Either[String, T]] =
       configs.collectFirst { case (c, v) if c == config => config.parse(v) }
 
@@ -73,7 +74,7 @@ object Dumbo extends dumbo.internal.PlatformApp {
                     case None            => Right(None)
                     case Some(Left(err)) => Left(err)
                     case Some(Right(pw)) => Right(Some(pw))
-      ssl      <- collectConfig(Config.Ssl).getOrElse(Right(SSL.None))
+      ssl      <- collectConfig(Config.Ssl).getOrElse(Right(dumbo.ConnectionConfig.SSL.None))
       location <- collectConfig(Config.Location).toRight("Missing location path").flatten
       schemas  <- collectConfig(Config.Schemas).getOrElse(Right(Set.empty))
       table <- collectConfig(Config.Table) match
@@ -84,34 +85,38 @@ object Dumbo extends dumbo.internal.PlatformApp {
                              case None            => Right(None)
                              case Some(Left(err)) => Left(err)
                              case Some(Right(v))  => Right(Some(v))
-    } yield dumbo.Dumbo
-      .withFilesIn[IO](location)
-      .apply(
-        connection = dumbo.ConnectionConfig(
-          host = host,
-          port = port,
-          user = user,
-          database = database,
-          password = password,
-          ssl = ssl,
+      connection = dumbo.ConnectionConfig(
+                     host = host,
+                     port = port,
+                     user = user,
+                     database = database,
+                     password = password,
+                     ssl = ssl,
+                   )
+    } yield (
+      dumbo.Dumbo
+        .withFilesIn[IO](location)
+        .apply(
+          connection = connection,
+          defaultSchema = schemas.headOption.getOrElse(defaults.defaultSchema),
+          schemas = schemas,
+          schemaHistoryTable = table.getOrElse(defaults.schemaHistoryTable),
+          validateOnMigrate = validateOnMigrate.getOrElse(defaults.validateOnMigrate),
         ),
-        defaultSchema = schemas.headOption.getOrElse(defaults.defaultSchema),
-        schemas = schemas,
-        schemaHistoryTable = table.getOrElse(defaults.schemaHistoryTable),
-        validateOnMigrate = validateOnMigrate.getOrElse(defaults.validateOnMigrate),
-      )
+      connection,
+    )
 
   }
 
   private def runMigration(options: List[(Config[?], String)]): IO[ExitCode] =
     dumboFromConfigs(options) match
-      case Left(value) => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
-      case Right(d)    => d.runMigration.as(ExitCode.Success)
+      case Left(value)   => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
+      case Right((d, _)) => d.runMigration.as(ExitCode.Success)
 
   private def runValidation(options: List[(Config[?], String)]): IO[ExitCode] =
     dumboFromConfigs(options) match
       case Left(value) => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
-      case Right(d) =>
+      case Right((d, _)) =>
         d.runValidationWithHistory.flatMap {
           case Valid(_) => Console[IO].println("Validation result: ok").as(ExitCode.Success)
           case Invalid(e) =>
