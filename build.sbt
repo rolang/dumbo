@@ -63,7 +63,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= List(
 }
 ThisBuild / githubWorkflowJobSetup ++= Seq(
   WorkflowStep.Run(
-    commands = List("docker-compose up -d"),
+    commands = List("docker compose up -d"),
     name = Some("Start up Postgres"),
     cond = Some("startsWith(matrix.os, 'ubuntu')"),
   )

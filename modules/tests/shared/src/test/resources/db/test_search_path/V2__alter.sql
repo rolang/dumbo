@@ -1,0 +1,1 @@
+ALTER TABLE test_schema_1 ADD COLUMN col VARCHAR;

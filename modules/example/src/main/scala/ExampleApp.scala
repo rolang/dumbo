@@ -16,7 +16,7 @@ object ExampleApp extends IOApp.Simple {
         user = "root",
         database = "postgres",
         password = None,
-        ssl = skunk.SSL.None,
+        ssl = ConnectionConfig.SSL.None,
       )
     )
     .runMigration

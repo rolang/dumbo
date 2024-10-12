@@ -151,7 +151,7 @@ object ExampleApp extends IOApp.Simple {
         user = "root",
         database = "postgres",
         password = None,
-        ssl = skunk.SSL.None,
+        ssl = ConnectionConfig.SSL.None,
       )
     )
     .runMigration
@@ -223,7 +223,7 @@ dumboWithResouces.apply(
     user = "postgres",
     database = "postgres",
     password = Some("postgres"),
-    ssl = skunk.SSL.None, // skunk.SSL config, default is skunk.SSL.None
+    ssl = dumbo.ConnectionConfig.SSL.None, // SSL config, default is dumbo.ConnectionConfig.SSL.None
   ),
 
   // default schema (the history state is going to be stored under that schema)
@@ -244,6 +244,29 @@ dumboWithResouces.apply(
 // it will perform requests to Postgres in given interval to check for queries that are causing the lock on migration history table
 dumboWithResouces.withMigrationStateLogAfter[IO](5.seconds)(
   /* use config as above */
+)
+
+// in some cases you may want to provide a custom skunk session instead of connection config
+// NOTE: given a connection config, dumbo will construct a session that will include provided schemas into the search path
+// if you want to achieve the same with a custom session, 
+// then you need to add it to the search_path parameter of the session yourself
+dumboWithResouces.bySession(
+  defaultSchema = "schema_1",
+  sessionResource = skunk.Session.single[IO](
+    host = "localhost",
+    port = 5432,
+    user = "postgres",
+    database = "postgres",
+    password = Some("postgres"),
+    // add schemas to the search path if desired
+    // those are added by default when using a dumbo.ConnectionConfig
+    parameters = skunk.Session.DefaultConnectionParameters ++ Map(
+      "search_path" -> "schema_1"
+    ),
+    // a strategy other than BuiltinsOnly should not be reuired for running migrations
+    // you may want to keep that
+    strategy = skunk.util.Typer.Strategy.BuiltinsOnly,
+  )
 )
 ```
 

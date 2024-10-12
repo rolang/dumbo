@@ -34,11 +34,34 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]) =
+  )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
+    byConnectionConfig(connection, defaultSchema, schemas, schemaHistoryTable, validateOnMigrate)
+
+  def byConnectionConfig(
+    connection: ConnectionConfig,
+    defaultSchema: String = Dumbo.defaults.defaultSchema,
+    schemas: Set[String] = Dumbo.defaults.schemas,
+    schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
+    validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+  )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
+    bySession(
+      sessionResource = toSessionResource(connection, defaultSchema, schemas),
+      defaultSchema = defaultSchema,
+      schemas = schemas,
+      schemaHistoryTable = schemaHistoryTable,
+      validateOnMigrate = validateOnMigrate,
+    )
+
+  def bySession(
+    sessionResource: Resource[F, Session[F]],
+    defaultSchema: String = Dumbo.defaults.defaultSchema,
+    schemas: Set[String] = Dumbo.defaults.schemas,
+    schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
+    validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+  )(implicit S: Sync[F], C: Console[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
-      sessionResource = toSessionResource(connection, defaultSchema, schemas),
-      connection = connection,
+      sessionResource = sessionResource,
       defaultSchema = defaultSchema,
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
@@ -55,10 +78,25 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     implicit val network: Network[F] = Network.forAsync(A)
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
 
+    withMigrationStateLogAfterBySession(logMigrationStateAfter)(
+      sessionResource,
+      defaultSchema,
+      schemas,
+      schemaHistoryTable,
+      validateOnMigrate,
+    )
+  }
+
+  def withMigrationStateLogAfterBySession(logMigrationStateAfter: FiniteDuration)(
+    sessionResource: Resource[F, Session[F]],
+    defaultSchema: String = Dumbo.defaults.defaultSchema,
+    schemas: Set[String] = Dumbo.defaults.schemas,
+    schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
+    validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+  )(implicit A: Async[F], C: Console[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
       sessionResource = sessionResource,
-      connection = connection,
       defaultSchema = defaultSchema,
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
@@ -104,7 +142,6 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
             }.void
         },
     )
-  }
 
   def listMigrationFiles(implicit S: Sync[F]): F[ValidatedNec[DumboValidationException, List[ResourceFile]]] =
     Dumbo.listMigrationFiles(reader)
@@ -124,7 +161,11 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       database = connection.database,
       password = connection.password,
       strategy = Typer.Strategy.BuiltinsOnly,
-      ssl = connection.ssl,
+      ssl = connection.ssl match {
+        case ConnectionConfig.SSL.None    => SSL.None
+        case ConnectionConfig.SSL.Trusted => SSL.Trusted
+        case ConnectionConfig.SSL.System  => SSL.System
+      },
       parameters = params,
     )
   }
@@ -133,7 +174,6 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
 class Dumbo[F[_]: Sync: Console](
   private[dumbo] val resReader: ResourceReader[F],
   sessionResource: Resource[F, Session[F]],
-  private[dumbo] val connection: ConnectionConfig,
   defaultSchema: String,
   schemas: Set[String],
   schemaHistoryTable: String,
@@ -316,8 +356,18 @@ class Dumbo[F[_]: Sync: Console](
   def runMigration: F[MigrationResult] = sessionResource.use(migrateBySession)
 
   private def migrateBySession(session: Session[F]): F[Dumbo.MigrationResult] = for {
-    dbVersion <- session.unique(sql"SELECT version()".query(text))
-    _         <- Console[F].println(s"Starting migration on $dbVersion")
+    dbVersion  <- session.unique(sql"SELECT version()".query(text))
+    searchPath <- session.unique(sql"SHOW search_path".query(text)).map(_.split(",").map(_.trim).toSet)
+    _ <- allSchemas.filterNot(searchPath.contains(_)).toList match {
+           case Nil => ().pure[F]
+           case missing =>
+             Console[F].println(
+               s"""|WARNING: Following schemas are not included in the search path: ${missing.mkString(", ")}.\n
+                   |This may happen if you provide a custom session.\n
+                   |If you want to include them in the search path, you need to add it to the "search_path" parameter of the session.""".stripMargin
+             )
+         }
+    _ <- Console[F].println(s"Starting migration on $dbVersion")
     schemaRes <-
       allSchemas.toList
         .flatTraverse(schema =>

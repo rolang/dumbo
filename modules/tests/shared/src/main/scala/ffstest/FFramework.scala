@@ -4,10 +4,15 @@
 
 package ffstest
 
+import java.nio.charset.Charset
+import java.util.concurrent.atomic.AtomicReference
+
 import scala.concurrent.duration.*
 import scala.util.Random
 
+import cats.Show
 import cats.data.ValidatedNec
+import cats.effect.std.Console
 import cats.effect.{IO, Resource, std}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
@@ -32,17 +37,18 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     password = None,
   )
 
-  def session: Resource[IO, Session[IO]] = Session
+  def session(params: Map[String, String] = Map.empty): Resource[IO, Session[IO]] = Session
     .single[IO](
       host = connectionConfig.host,
       port = connectionConfig.port,
       user = connectionConfig.user,
       database = connectionConfig.database,
       password = connectionConfig.password,
+      parameters = Session.DefaultConnectionParameters ++ params,
     )
 
   def loadHistory(schema: String, tableName: String = "flyway_schema_history"): IO[List[HistoryEntry]] =
-    session.use(_.execute(History(s"$schema.$tableName").loadAllQuery))
+    session().use(_.execute(History(s"$schema.$tableName").loadAllQuery))
 
   def dumboMigrate(
     defaultSchema: String,
@@ -70,6 +76,24 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
        )
      }).runMigration
 
+  def dumboMigrateWithSession(
+    defaultSchema: String,
+    withResources: DumboWithResourcesPartiallyApplied[IO],
+    session: Resource[IO, Session[IO]],
+    schemas: List[String] = Nil,
+    schemaHistoryTable: String = "flyway_schema_history",
+    validateOnMigrate: Boolean = true,
+  )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
+    withResources
+      .bySession(
+        sessionResource = session,
+        defaultSchema = defaultSchema,
+        schemas = schemas.toSet,
+        schemaHistoryTable = schemaHistoryTable,
+        validateOnMigrate = validateOnMigrate,
+      )
+      .runMigration
+
   def validateWithAppliedMigrations(
     defaultSchema: String,
     withResources: DumboWithResourcesPartiallyApplied[IO],
@@ -81,7 +105,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       schemas = schemas.toSet,
     ).runValidationWithHistory
 
-  def dropSchemas: IO[Unit] = session.use { s =>
+  def dropSchemas: IO[Unit] = session().use { s =>
     for {
       customSchemas <-
         s.execute(
@@ -96,4 +120,16 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       _ <- IO.println(s"Schema drop result ${c.mkString(", ")}")
     } yield ()
   }
+}
+
+class TestConsole extends Console[IO] {
+  val logs: AtomicReference[Vector[String]] = new AtomicReference(Vector.empty[String])
+
+  def flush(): Unit = logs.set(Vector.empty)
+
+  override def readLineWithCharset(charset: Charset): IO[String] = ???
+  override def print[A](a: A)(implicit S: Show[A]): IO[Unit]     = ???
+  override def println[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO(logs.getAndUpdate(_ :+ S.show(a))).void
+  override def error[A](a: A)(implicit S: Show[A]): IO[Unit]     = IO.println(S.show(a))
+  override def errorln[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))
 }

@@ -80,7 +80,7 @@ jobs:
 
       - name: Start up Postgres
         if: startsWith(matrix.os, 'ubuntu')
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
@@ -225,7 +225,7 @@ jobs:
 
       - name: Start up Postgres
         if: startsWith(matrix.os, 'ubuntu')
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Download target directories (3, rootJVM)
         uses: actions/download-artifact@v4
@@ -395,7 +395,7 @@ jobs:
 
       - name: Start up Postgres
         if: startsWith(matrix.os, 'ubuntu')
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
