@@ -356,18 +356,21 @@ class Dumbo[F[_]: Sync: Console](
   def runMigration: F[MigrationResult] = sessionResource.use(migrateBySession)
 
   private def migrateBySession(session: Session[F]): F[Dumbo.MigrationResult] = for {
-    dbVersion  <- session.unique(sql"SELECT version()".query(text))
-    searchPath <- session.unique(sql"SHOW search_path".query(text)).map(_.split(",").map(_.trim).toSet)
-    _ <- allSchemas.filterNot(searchPath.contains(_)).toList match {
-           case Nil => ().pure[F]
-           case missing =>
-             Console[F].println(
-               s"""|WARNING: Following schemas are not included in the search path: ${missing.mkString(", ")}.\n
-                   |This may happen if you provide a custom session.\n
-                   |If you want to include them in the search path, you need to add it to the "search_path" parameter of the session.""".stripMargin
-             )
+    // verify search_path
+    _ <- session.unique(sql"SHOW search_path".query(text)).flatMap { sp =>
+           val spSchemas = sp.split(",").map(_.trim).toSet
+           allSchemas.filterNot(spSchemas.contains(_)).toList match {
+             case Nil => ().pure[F]
+             case missing =>
+               val newSearchPath = allSchemas.mkString(",")
+               Console[F].println(
+                 s"""|WARNING: Following schemas are not included in the search path '$sp': ${missing.mkString(", ")}.
+                     |The search_path will be set to '${newSearchPath}'. Consider adding it to session parameters instead.""".stripMargin
+               ) >> session.execute(sql"SET search_path = #${newSearchPath}".command).void
+           }
          }
-    _ <- Console[F].println(s"Starting migration on $dbVersion")
+    dbVersion <- session.unique(sql"SELECT version()".query(text))
+    _         <- Console[F].println(s"Starting migration on $dbVersion")
     schemaRes <-
       allSchemas.toList
         .flatTraverse(schema =>
