@@ -170,22 +170,41 @@ trait DumboMigrationSpec extends ffstest.FTest {
 
   dbTest("warn if schemas are not included in the search path for custom sessions") {
     val withResources = dumboWithResources("db/test_search_path")
-    val schemas       = List("schema_1")
+    val schemas       = List("schema_1", "schema_2")
     val testConsole   = new TestConsole
-    val warningMsg    = "WARNING: Following schemas are not included in the search path: schema_1"
+    val hasWarning = (m: String) =>
+      m.contains(
+        """WARNING: Following schemas are not included in the search path '"$user", public': schema_1, schema_2"""
+      ) &&
+      m.contains("""The search_path will be set to 'schema_1,schema_2'""")
 
     def migrateBySession(params: Map[String, String] = Map.empty) =
-      dumboMigrateWithSession(schemas.head, withResources, session(params))(testConsole).attempt
+      dumboMigrateWithSession(schemas.head, withResources, session(params), schemas.tail)(testConsole).attempt
 
     for {
       dumboRes <- migrateBySession()
-      _         = assert(dumboRes.isLeft)
-      _         = assert(testConsole.logs.get().exists(_.contains(warningMsg)))
-      _         = testConsole.flush()
+      _         = assert(dumboRes.isRight)
+      _         = assert(testConsole.logs.get().exists(hasWarning))
+      // reset
+      _ <- dropSchemas
+      _  = testConsole.flush()
       // succeed without warning if search_path is set
-      dumboResB <- migrateBySession(Map("search_path" -> "schema_1"))
+      dumboResB <- migrateBySession(Map("search_path" -> "schema_1,schema_2"))
       _          = assert(dumboResB.isRight)
-      _          = assert(!testConsole.logs.get().exists(_.contains(warningMsg)))
+      _          = assert(!testConsole.logs.get().exists(hasWarning))
+    } yield ()
+  }
+
+  dbTest("migrate by different schema using custom session") {
+    val withResources = dumboWithResources("db/test_1")
+    val schemaA       = "test_a"
+    val schemaB       = "test_b"
+
+    for {
+      resDumboA <- dumboMigrateWithSession(schemaA, withResources, session())
+      resDumboB <- dumboMigrateWithSession(schemaB, withResources, session())
+      _          = assertEquals(resDumboA.migrationsExecuted, 4)
+      _          = assertEquals(resDumboB.migrationsExecuted, 4)
     } yield ()
   }
 

@@ -3,7 +3,7 @@ import scala.scalanative.build.*
 lazy val `scala-2.13` = "2.13.14"
 lazy val `scala-3`    = "3.3.3"
 
-ThisBuild / tlBaseVersion      := "0.4"
+ThisBuild / tlBaseVersion      := "0.5"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)

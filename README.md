@@ -247,23 +247,23 @@ dumboWithResouces.withMigrationStateLogAfter[IO](5.seconds)(
 )
 
 // in some cases you may want to provide a custom skunk session instead of connection config
-// NOTE: given a connection config, dumbo will construct a session that will include provided schemas into the search path
-// if you want to achieve the same with a custom session, 
-// then you need to add it to the search_path parameter of the session yourself
+// NOTE: given a connection config, dumbo will construct a session that will include given schemas into the search path via session parameters
+// for custom sessions the search_path will be updated via the SET command if it doesn't match given schemas config which is not recommended (see https://typelevel.org/skunk/reference/Sessions.html#session-parameters)
+// you may consider adding the search_path to the parameters yourself in that case, dumbo will log it as a warning
 dumboWithResouces.bySession(
-  defaultSchema = "schema_1",
+  defaultSchema = "schema_1", // consider updating the search_path for non default schema settings
   sessionResource = skunk.Session.single[IO](
     host = "localhost",
     port = 5432,
     user = "postgres",
     database = "postgres",
     password = Some("postgres"),
-    // add schemas to the search path if desired
+    // add schemas to the search path
     // those are added by default when using a dumbo.ConnectionConfig
     parameters = skunk.Session.DefaultConnectionParameters ++ Map(
       "search_path" -> "schema_1"
     ),
-    // a strategy other than BuiltinsOnly should not be reuired for running migrations
+    // a strategy other than BuiltinsOnly should not be required for running migrations
     // you may want to keep that
     strategy = skunk.util.Typer.Strategy.BuiltinsOnly,
   )
