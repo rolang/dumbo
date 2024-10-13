@@ -9,6 +9,8 @@ import scala.concurrent.duration.*
 import cats.data.Validated.Invalid
 import cats.implicits.*
 import ffstest.TestConsole
+import skunk.codec.all.*
+import skunk.implicits.*
 
 trait DumboMigrationSpec extends ffstest.FTest {
   def db: Db
@@ -206,6 +208,37 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _          = assertEquals(resDumboA.migrationsExecuted, 4)
       _          = assertEquals(resDumboB.migrationsExecuted, 4)
     } yield ()
+  }
+
+  dbTest("default schema is used when no schema is specified in migration sripts") {
+    val withResources = dumboWithResources("db/test_default_schema")
+
+    (1 to 5).toList.traverse_ { _ =>
+      val schemaDefault = someSchemaName
+      val schemas       = List.fill(scala.util.Random.nextInt(10))(someSchemaName)
+
+      def assertDefaultSchemaHasTable =
+        session()
+          .use(
+            _.execute(sql"""|SELECT table_schema::text
+                            |FROM information_schema.tables
+                            |WHERE table_name = 'test_default_schema'""".stripMargin.query(text))
+          )
+          .map { schemas =>
+            assertEquals(schemas, List(schemaDefault))
+          }
+
+      for {
+        _ <- dropSchemas
+        // migrate by connection config
+        _ <- dumboMigrate(schemaDefault, withResources, schemas)
+        _ <- assertDefaultSchemaHasTable
+        _ <- dropSchemas
+        // migrate by custom session
+        _ <- dumboMigrateWithSession(schemaDefault, withResources, session(), schemas)
+        _ <- assertDefaultSchemaHasTable
+      } yield ()
+    }
   }
 
   {
