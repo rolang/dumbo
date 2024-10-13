@@ -250,7 +250,7 @@ dumboWithResouces.withMigrationStateLogAfter[IO](5.seconds)(
 // NOTE: given a connection config, dumbo will construct a session that will include given schemas into the search path via session parameters
 // for custom sessions the search_path will be updated via the SET command if it doesn't match given schemas config which is not recommended (see https://typelevel.org/skunk/reference/Sessions.html#session-parameters)
 // you may consider adding the search_path to the parameters yourself in that case, dumbo will log it as a warning
-dumboWithResouces.bySession(
+dumboWithResouces.withSession(
   defaultSchema = "schema_1", // consider updating the search_path for non default schema settings
   sessionResource = skunk.Session.single[IO](
     host = "localhost",

@@ -35,16 +35,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
   )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
-    byConnectionConfig(connection, defaultSchema, schemas, schemaHistoryTable, validateOnMigrate)
-
-  def byConnectionConfig(
-    connection: ConnectionConfig,
-    defaultSchema: String = Dumbo.defaults.defaultSchema,
-    schemas: Set[String] = Dumbo.defaults.schemas,
-    schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
-    validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
-    bySession(
+    withSession(
       sessionResource = toSessionResource(connection, defaultSchema, schemas),
       defaultSchema = defaultSchema,
       schemas = schemas,
@@ -52,7 +43,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       validateOnMigrate = validateOnMigrate,
     )
 
-  def bySession(
+  def withSession(
     sessionResource: Resource[F, Session[F]],
     defaultSchema: String = Dumbo.defaults.defaultSchema,
     schemas: Set[String] = Dumbo.defaults.schemas,

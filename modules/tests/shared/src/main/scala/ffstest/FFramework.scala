@@ -85,7 +85,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     validateOnMigrate: Boolean = true,
   )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
     withResources
-      .bySession(
+      .withSession(
         sessionResource = session,
         defaultSchema = defaultSchema,
         schemas = schemas.toSet,
