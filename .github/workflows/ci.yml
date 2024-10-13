@@ -44,8 +44,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Install sbt
-        if: contains(runner.os, 'macos')
-        run: brew install sbt
+        uses: sbt/setup-sbt@v1
 
       - name: Checkout current branch (full)
         uses: actions/checkout@v4
@@ -80,7 +79,7 @@ jobs:
 
       - name: Start up Postgres
         if: startsWith(matrix.os, 'ubuntu')
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
@@ -189,8 +188,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install sbt
-        if: contains(runner.os, 'macos')
-        run: brew install sbt
+        uses: sbt/setup-sbt@v1
 
       - name: Checkout current branch (full)
         uses: actions/checkout@v4
@@ -225,7 +223,7 @@ jobs:
 
       - name: Start up Postgres
         if: startsWith(matrix.os, 'ubuntu')
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Download target directories (3, rootJVM)
         uses: actions/download-artifact@v4
@@ -351,7 +349,7 @@ jobs:
 
   dependency-submission:
     name: Submit Dependencies
-    if: github.event_name != 'pull_request'
+    if: github.event.repository.fork == false && github.event_name != 'pull_request'
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -359,8 +357,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install sbt
-        if: contains(runner.os, 'macos')
-        run: brew install sbt
+        uses: sbt/setup-sbt@v1
 
       - name: Checkout current branch (full)
         uses: actions/checkout@v4
@@ -395,7 +392,7 @@ jobs:
 
       - name: Start up Postgres
         if: startsWith(matrix.os, 'ubuntu')
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
