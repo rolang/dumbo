@@ -53,7 +53,7 @@ class CliSpec extends FunSuite {
 
     assert(res.isRight)
     val (dmb, connection) = res.toOption.get
-    assertEquals(dmb.allSchemas, Set("public"))
+    assertEquals(dmb.allSchemas, List("public"))
     assertEquals(dmb.historyTable, "public.flyway_schema_history")
     assertEquals(dmb.validateOnMigrate, true)
     assertEquals(dmb.resReader.location, Some("/abd/efg"))
@@ -81,7 +81,7 @@ class CliSpec extends FunSuite {
 
     assert(res.isRight)
     val (dmb, connection) = res.toOption.get
-    assertEquals(dmb.allSchemas, Set("schema1", "schema2"))
+    assertEquals(dmb.allSchemas, List("schema1", "schema2"))
     assertEquals(dmb.historyTable, "schema1.some_table")
     assertEquals(dmb.validateOnMigrate, false)
     assertEquals(dmb.resReader.location, Some("/abd/efg"))
