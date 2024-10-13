@@ -27,7 +27,10 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
-  def someSchemaName = s"schema_${Random.alphanumeric.take(10).mkString}"
+  def someSchemaName: String = {
+    val chars = "abcdefghijklmnopqrstuvwxyz"
+    LazyList.continually(chars.charAt(Random.nextInt(chars.length))).take(15).mkString
+  }
 
   lazy val connectionConfig: ConnectionConfig = ConnectionConfig(
     host = "localhost",

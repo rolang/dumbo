@@ -142,7 +142,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     defaultSchema: String,
     schemas: Set[String],
   )(implicit T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]) = {
-    val searchPath = (schemas + defaultSchema).mkString(",")
+    val searchPath = Dumbo.toSearchPath(defaultSchema, schemas)
     val params     = Session.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
 
     Session.single[F](
@@ -173,7 +173,7 @@ class Dumbo[F[_]: Sync: Console](
 ) {
   import Dumbo.*
 
-  private[dumbo] val allSchemas   = Set(defaultSchema) ++ schemas
+  private[dumbo] val allSchemas   = defaultSchema :: schemas.toList
   private[dumbo] val historyTable = s"${defaultSchema}.${schemaHistoryTable}"
   private val dumboHistory        = History(historyTable)
 
@@ -350,27 +350,26 @@ class Dumbo[F[_]: Sync: Console](
     // verify search_path
     _ <- session.unique(sql"SHOW search_path".query(text)).flatMap { sp =>
            val spSchemas = sp.split(",").map(_.trim).toSet
-           allSchemas.filterNot(spSchemas.contains(_)).toList match {
+           allSchemas.diff(spSchemas.toList) match {
              case Nil => ().pure[F]
              case missing =>
-               val newSearchPath = allSchemas.mkString(",")
+               val newSearchPath = toSearchPath(defaultSchema, schemas)
                Console[F].println(
                  s"""|WARNING: Following schemas are not included in the search path '$sp': ${missing.mkString(", ")}.
                      |The search_path will be set to '${newSearchPath}'. Consider adding it to session parameters instead.""".stripMargin
-               ) >> session.execute(sql"SET search_path = #${newSearchPath}".command).void
+               ) >> session.execute(sql"SET search_path TO #${newSearchPath}".command).void
            }
          }
     dbVersion <- session.unique(sql"SELECT version()".query(text))
     _         <- Console[F].println(s"Starting migration on $dbVersion")
     schemaRes <-
-      allSchemas.toList
-        .flatTraverse(schema =>
-          session.execute(initSchemaCmd(schema)).attempt.map {
-            case Right(Completion.CreateSchema)                                                          => List(schema)
-            case Left(e: skunk.exception.PostgresErrorException) if duplicateErrorCodes.contains(e.code) => Nil
-            case _                                                                                       => Nil
-          }
-        )
+      allSchemas.flatTraverse(schema =>
+        session.execute(initSchemaCmd(schema)).attempt.map {
+          case Right(Completion.CreateSchema)                                                          => List(schema)
+          case Left(e: skunk.exception.PostgresErrorException) if duplicateErrorCodes.contains(e.code) => Nil
+          case _                                                                                       => Nil
+        }
+      )
     _ <- session.execute(dumboHistory.createTableCommand).void.recover {
            case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
          }
@@ -569,4 +568,8 @@ object Dumbo extends internal.DumboPlatform {
              .compile
              .drain
     } yield crc32.getValue().toInt
+
+  // need to ensure that default schema appears first in the search_path
+  private[dumbo] def toSearchPath(defaultSchema: String, schemas: Set[String]) =
+    (defaultSchema :: schemas.toList).mkString(",")
 }
