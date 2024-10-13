@@ -173,7 +173,7 @@ class Dumbo[F[_]: Sync: Console](
 ) {
   import Dumbo.*
 
-  private[dumbo] val allSchemas   = defaultSchema :: schemas.toList
+  private[dumbo] val allSchemas   = combineSchemas(defaultSchema, schemas)
   private[dumbo] val historyTable = s"${defaultSchema}.${schemaHistoryTable}"
   private val dumboHistory        = History(historyTable)
 
@@ -346,18 +346,42 @@ class Dumbo[F[_]: Sync: Console](
 
   def runMigration: F[MigrationResult] = sessionResource.use(migrateBySession)
 
+  // search_path needs to include default schema before other schemas
+  private def verifySearchPath(sp: String): F[Option[String]] = {
+    val spSchemas          = sp.split(",").map(_.trim).toVector
+    val sps                = spSchemas.mkString(", ")
+    val expectedSearchPath = toSearchPath(defaultSchema, schemas)
+
+    allSchemas.diff(spSchemas) match {
+      case Nil =>
+        // validate the order
+        val defaultIdx = spSchemas.indexOf(defaultSchema)
+        if (schemas.forall(s => spSchemas.indexOf(s) > defaultIdx)) {
+          none[String].pure[F]
+        } else {
+          Console[F]
+            .println(
+              s"""|WARNING: Default schema '$defaultSchema' is not in the right position of the search path '$sps'.
+                  |The search_path will be set to '${expectedSearchPath}'. Consider adding it to session parameters instead.""".stripMargin
+            )
+            .as(Some(expectedSearchPath))
+        }
+      case missing =>
+        Console[F]
+          .println(
+            s"""|WARNING: Following schemas are not included in the search path '$sps': ${missing.mkString(", ")}.
+                |The search_path will be set to '$expectedSearchPath'. Consider adding it to session parameters instead.""".stripMargin
+          )
+          .as(Some(expectedSearchPath))
+    }
+  }
+
   private def migrateBySession(session: Session[F]): F[Dumbo.MigrationResult] = for {
-    // verify search_path
     _ <- session.unique(sql"SHOW search_path".query(text)).flatMap { sp =>
-           val spSchemas = sp.split(",").map(_.trim).toSet
-           allSchemas.diff(spSchemas.toList) match {
-             case Nil => ().pure[F]
-             case missing =>
-               val newSearchPath = toSearchPath(defaultSchema, schemas)
-               Console[F].println(
-                 s"""|WARNING: Following schemas are not included in the search path '$sp': ${missing.mkString(", ")}.
-                     |The search_path will be set to '${newSearchPath}'. Consider adding it to session parameters instead.""".stripMargin
-               ) >> session.execute(sql"SET search_path TO #${newSearchPath}".command).void
+           verifySearchPath(sp).flatMap {
+             case Some(searchPathUpdate) =>
+               session.execute(sql"SET search_path TO #${searchPathUpdate}".command).void
+             case _ => ().pure[F]
            }
          }
     dbVersion <- session.unique(sql"SELECT version()".query(text))
@@ -569,7 +593,10 @@ object Dumbo extends internal.DumboPlatform {
              .drain
     } yield crc32.getValue().toInt
 
-  // need to ensure that default schema appears first in the search_path
+  // need to ensure that default schema appears first in the list
+  private[dumbo] def combineSchemas(defaultSchema: String, schemas: Set[String]) =
+    (defaultSchema :: schemas.toList).distinct
+
   private[dumbo] def toSearchPath(defaultSchema: String, schemas: Set[String]) =
-    (defaultSchema :: schemas.toList).mkString(",")
+    combineSchemas(defaultSchema, schemas).mkString(", ")
 }

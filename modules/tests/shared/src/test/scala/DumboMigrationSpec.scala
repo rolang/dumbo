@@ -174,25 +174,34 @@ trait DumboMigrationSpec extends ffstest.FTest {
     val withResources = dumboWithResources("db/test_search_path")
     val schemas       = List("schema_1", "schema_2")
     val testConsole   = new TestConsole
-    val hasWarning = (m: String) =>
+    val hasWarning    = (m: String) => m.contains("""The search_path will be set to 'schema_1, schema_2'""")
+    val hasMissingSchemaWarning = (m: String) =>
       m.contains(
-        """WARNING: Following schemas are not included in the search path '"$user", public': schema_1, schema_2"""
-      ) &&
-      m.contains("""The search_path will be set to 'schema_1,schema_2'""")
+        """Following schemas are not included in the search path '"$user", public': schema_1, schema_2"""
+      ) && hasWarning(m)
+
+    val hasWrongOrderWarning = (m: String) =>
+      m.contains(
+        """Default schema 'schema_1' is not in the right position of the search path 'schema_2, schema_1'"""
+      ) && hasWarning(m)
 
     def migrateBySession(params: Map[String, String] = Map.empty) =
       dumboMigrateWithSession(schemas.head, withResources, session(params), schemas.tail)(testConsole).attempt
 
     for {
+      // warn about missing schemas in the search_path
       dumboRes <- migrateBySession()
       _         = assert(dumboRes.isRight)
-      _         = assert(testConsole.logs.get().exists(hasWarning))
-      // reset
-      _ <- dropSchemas
-      _  = testConsole.flush()
-      // succeed without warning if search_path is set
-      dumboResB <- migrateBySession(Map("search_path" -> "schema_1,schema_2"))
+      _         = assert(testConsole.logs.get().exists(hasMissingSchemaWarning))
+      // warn about wrong order in the search_path
+      _         <- { testConsole.flush(); dropSchemas }
+      dumboResB <- migrateBySession(Map("search_path" -> "schema_2,schema_1"))
       _          = assert(dumboResB.isRight)
+      _          = assert(testConsole.logs.get().exists(hasWrongOrderWarning))
+      // succeed without warning if search_path is set as expected
+      _         <- { testConsole.flush(); dropSchemas }
+      dumboResC <- migrateBySession(Map("search_path" -> "schema_1,schema_2"))
+      _          = assert(dumboResC.isRight)
       _          = assert(!testConsole.logs.get().exists(hasWarning))
     } yield ()
   }
@@ -236,6 +245,15 @@ trait DumboMigrationSpec extends ffstest.FTest {
         _ <- dropSchemas
         // migrate by custom session
         _ <- dumboMigrateWithSession(schemaDefault, withResources, session(), schemas)
+        _ <- assertDefaultSchemaHasTable
+        // migrate by custom session with random search_path order
+        _ <- dropSchemas
+        _ <- dumboMigrateWithSession(
+               schemaDefault,
+               withResources,
+               session(Map("search_path" -> scala.util.Random.shuffle(schemaDefault :: schemas).mkString(","))),
+               schemas,
+             )
         _ <- assertDefaultSchemaHasTable
       } yield ()
     }

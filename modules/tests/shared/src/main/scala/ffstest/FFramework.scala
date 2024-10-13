@@ -27,6 +27,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
+  // note: schema name should not start with "pg_" or "crdb_" to avoid conflicts with reserved ones
   def someSchemaName: String = {
     val chars = "abcdefghijklmnopqrstuvwxyz"
     LazyList.continually(chars.charAt(Random.nextInt(chars.length))).take(15).mkString
@@ -112,10 +113,9 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     for {
       customSchemas <-
         s.execute(
-          sql"""
-        SELECT schema_name::text
-        FROM information_schema.schemata 
-        WHERE schema_name NOT LIKE 'pg_%' AND schema_name NOT LIKE 'crdb_%' AND schema_name NOT IN ('information_schema', 'public')"""
+          sql"""|SELECT schema_name::text
+                |FROM information_schema.schemata 
+                |WHERE schema_name NOT LIKE 'pg\_%' AND schema_name NOT LIKE 'crdb\_%' AND schema_name NOT IN ('information_schema', 'public')""".stripMargin
             .query(skunk.codec.text.text)
         )
       _ <- IO.println(s"Dropping schemas ${customSchemas.mkString(", ")}")
@@ -132,7 +132,9 @@ class TestConsole extends Console[IO] {
 
   override def readLineWithCharset(charset: Charset): IO[String] = ???
   override def print[A](a: A)(implicit S: Show[A]): IO[Unit]     = ???
-  override def println[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO(logs.getAndUpdate(_ :+ S.show(a))).void
-  override def error[A](a: A)(implicit S: Show[A]): IO[Unit]     = IO.println(S.show(a))
-  override def errorln[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))
+  override def println[A](a: A)(implicit S: Show[A]): IO[Unit] = IO {
+    println(S.show(a)); logs.getAndUpdate(_ :+ S.show(a))
+  }.void
+  override def error[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))
+  override def errorln[A](a: A)(implicit S: Show[A]): IO[Unit] = IO.println(S.show(a))
 }
