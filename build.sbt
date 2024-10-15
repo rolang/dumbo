@@ -1,7 +1,7 @@
 import scala.scalanative.build.*
 
-lazy val `scala-2.13` = "2.13.14"
-lazy val `scala-3`    = "3.3.3"
+lazy val `scala-2.13` = "2.13.15"
+lazy val `scala-3`    = "3.3.4"
 
 ThisBuild / tlBaseVersion      := "0.5"
 ThisBuild / startYear          := Some(2023)
@@ -344,8 +344,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "10.17.0"
-lazy val postgresqlVersion = "42.7.3"
+lazy val flywayVersion     = "10.19.0"
+lazy val postgresqlVersion = "42.7.4"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
   .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
