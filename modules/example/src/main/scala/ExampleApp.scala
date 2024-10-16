@@ -1,6 +1,6 @@
 //> using scala 3.3.3
 //> using resourceDir ../resources
-//> using dep "dev.rolang::dumbo::0.4.0"
+//> using dep "dev.rolang::dumbo::0.5.0"
 
 import cats.effect.{IO, IOApp}
 import dumbo.{ConnectionConfig, Dumbo}
