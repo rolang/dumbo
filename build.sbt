@@ -344,7 +344,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "10.19.0"
+lazy val flywayVersion     = "10.20.0"
 lazy val postgresqlVersion = "42.7.4"
 lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
