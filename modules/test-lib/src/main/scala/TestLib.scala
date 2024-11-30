@@ -1,6 +1,4 @@
 import cats.effect.{IO, IOApp}
-import dumbo.{ConnectionConfig, Dumbo}
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import cats.effect.ExitCode
 import dumbo.ResourceFilePath
 
