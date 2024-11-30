@@ -164,15 +164,15 @@ jobs:
 
       - name: Test reading resources from a jar at compile time
         if: matrix.project == 'rootJVM' && matrix.scala == '3'
-        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'sampleLib/publishLocal; testLib/run'
+        run: sbt -Dsample_lib_test 'testLib/clean; sampleLib/publishLocal; testLib/run'
 
       - name: Make target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: mkdir -p modules/sample-lib/target modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
+        run: mkdir -p modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
 
       - name: Compress target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
-        run: tar cf targets.tar modules/sample-lib/target modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
+        run: tar cf targets.tar modules/core/native/target modules/core/jvm/target modules/cli/native/target project/target
 
       - name: Upload target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
@@ -350,3 +350,56 @@ jobs:
           docker tag rolang/dumbo:${RELEASE_TAG}-alpine rolang/dumbo:latest-alpine
           docker push rolang/dumbo:${RELEASE_TAG}-alpine
           docker push rolang/dumbo:latest-alpine
+
+  dependency-submission:
+    name: Submit Dependencies
+    if: github.event.repository.fork == false && github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        java: [temurin@21]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Checkout current branch (full)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java (temurin@21)
+        id: setup-java-temurin-21
+        if: matrix.java == 'temurin@21'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
+        run: sbt +update
+
+      - name: Setup Java (temurin@17)
+        id: setup-java-temurin-17
+        if: matrix.java == 'temurin@17'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
+
+      - name: Start up Postgres
+        if: startsWith(matrix.os, 'ubuntu')
+        run: docker compose up -d
+
+      - name: Submit Dependencies
+        uses: scalacenter/sbt-dependency-submission@v2
+        with:
+          modules-ignore: sample-lib_3 dumbo_3 dumbo_2.13 testsflyway_3 testsflyway_2.13 dumbo_3 dumbo_2.13 dumbo_3 dumbo_2.13 tests_3 tests_2.13 example_3 example_2.13 sample-lib-test_3 tests_native0.4_3 tests_native0.4_2.13
+          configs-ignore: test scala-tool scala-doc-tool test-internal
