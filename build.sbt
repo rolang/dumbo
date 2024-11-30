@@ -33,6 +33,7 @@ ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
+ThisBuild / tlCiDependencyGraphJob     := false
 
 lazy val llvmVersion  = "17"
 lazy val brewFormulas = Set("s2n", "utf8proc")
@@ -198,7 +199,7 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("sampleLib/publishLocal; testLib/run"),
   name = Some("Test reading resources from a jar at compile time"),
-  cond = Some("matrix.project == 'rootJVM'"),
+  cond = Some("matrix.project == 'rootJVM' && matrix.scala == '3'"),
 )
 
 addCommandAlias("fix", "; +Test/copyResources; +scalafixAll; +scalafmtAll; scalafmtSbt")
@@ -381,7 +382,6 @@ lazy val example = project
 
 lazy val sampleLib = project
   .in(file("modules/sample-lib"))
-  .settings(commonSettings)
   .settings(
     version               := "0.0.1-SNAPSHOT",
     scalaVersion          := `scala-3`,
