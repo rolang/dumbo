@@ -23,10 +23,25 @@ object ResourceFilePath:
 
     getClass().getClassLoader().getResources(location).asScala.toList match
       case head :: Nil =>
-        val base = Paths.get(head.toURI())
-        val resources =
-          new File(base.toString()).list().map(fileName => s"/$location/$fileName").toList
-        Expr(resources)
+        if head.toString.startsWith("jar:") then
+          val srcUriStr   = head.toURI().toString()
+          val jarFilePath = srcUriStr.slice(srcUriStr.lastIndexOf(":") + 1, srcUriStr.lastIndexOf("!"))
+
+          val resources = scala.util.Using.resource(java.util.zip.ZipFile(jarFilePath)) { fs =>
+            fs
+              .entries()
+              .asScala
+              .toList
+              .filter(_.getName().startsWith(location))
+              .map(entry => s"/${entry.getName()}")
+          }
+
+          Expr(resources)
+        else
+          val base = Paths.get(head.toURI())
+          val resources =
+            new File(base.toString()).list().map(fileName => s"/$location/$fileName").toList
+          Expr(resources)
       case Nil => report.errorAndAbort(s"resource ${location} was not found")
       case multiple =>
         report.errorAndAbort(s"found multiple resource locations for ${location} in:\n${multiple.mkString("\n")}")

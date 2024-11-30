@@ -191,7 +191,13 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/run"),
-  name = Some("Run example (covers reading resources from a jar)"),
+  name = Some("Run example (covers reading resources from a jar at runtime)"),
+  cond = Some("matrix.project == 'rootJVM'"),
+)
+
+ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
+  List("sampleLib/publishLocal; testLib/run"),
+  name = Some("Test reading resources from a jar at compile time"),
   cond = Some("matrix.project == 'rootJVM'"),
 )
 
@@ -369,7 +375,31 @@ lazy val example = project
   .settings(commonSettings)
   .settings(
     Compile / run / fork  := true,
-    publish / skip        := true,
     Compile / headerCheck := Nil,
     scalacOptions -= "-Werror",
+  )
+
+lazy val sampleLib = project
+  .in(file("modules/sample-lib"))
+  .settings(commonSettings)
+  .settings(
+    version               := "0.0.1-SNAPSHOT",
+    scalaVersion          := `scala-3`,
+    crossScalaVersions    := Nil,
+    name                  := "dumbo-sample-lib",
+    Compile / headerCheck := Nil,
+  )
+
+lazy val testLib = project
+  .in(file("modules/test-lib"))
+  .enablePlugins(NoPublishPlugin)
+  .settings(commonSettings)
+  .dependsOn(core.jvm)
+  .settings(
+    Compile / run / fork                := true,
+    libraryDependencies += "dev.rolang" %% "dumbo-sample-lib" % "0.0.1-SNAPSHOT",
+    scalaVersion                        := `scala-3`,
+    crossScalaVersions                  := Nil,
+    name                                := "dumbo-sample-lib-test",
+    Compile / headerCheck               := Nil,
   )
