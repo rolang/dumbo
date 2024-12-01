@@ -71,7 +71,7 @@ private[dumbo] object ResourceReader {
       override def relativeResourcePath(resource: ResourceFile): String =
         locationRelative match {
           case Some(l) => resource.path.value.stripPrefix(s"/$l/")
-          case _       => resource.path.value
+          case _       => resource.fileName
         }
 
       override val location: Option[String] = locationInfo
