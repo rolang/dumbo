@@ -222,18 +222,12 @@ class Dumbo[F[_]: Sync: Console](
       version = source.versionText,
       description = source.scriptDescription,
       `type` = "SQL",
-      script = historyScriptPath(source),
+      script = resReader.relativeResourcePath(source),
       checksum = Some(source.checksum),
       executionTimeMs = duration.toMillis.toInt,
       success = true,
     )
   }
-
-  private def historyScriptPath(resource: ResourceFile) =
-    resReader.locationRel match {
-      case Some(loc) => resource.path.value.stripPrefix(s"/$loc/")
-      case _         => resource.fileName
-    }
 
   private def validationGuard(session: Session[F], resources: ResourceFiles) =
     if (resources.nonEmpty) {
