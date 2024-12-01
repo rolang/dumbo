@@ -29,6 +29,25 @@ class DumboResourcesSpec extends ffstest.FTest {
     } yield ()
   }
 
+  test("list migration files from resources with subirectories") {
+    for {
+      files <- dumboWithResources("db/nested").listMigrationFiles
+      _ = files match {
+            case Valid(files) =>
+              assert(
+                files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
+                  (ResourceVersion.Versioned("1", NonEmptyList.of(1)), "V1__test.sql"),
+                  (ResourceVersion.Versioned("2", NonEmptyList.of(2)), "V2__test.sql"),
+                  (ResourceVersion.Versioned("3", NonEmptyList.of(3)), "V3__test.sql"),
+                  (ResourceVersion.Versioned("4", NonEmptyList.of(4)), "V4__test.sql"),
+                  (ResourceVersion.Versioned("5", NonEmptyList.of(5)), "V5__test.sql"),
+                )
+              )
+            case Invalid(errs) => fail(errs.toList.mkString("\n"))
+          }
+    } yield ()
+  }
+
   test("list migration files from relative path") {
     for {
       files <- Dumbo.withFilesIn[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1")).listMigrationFiles

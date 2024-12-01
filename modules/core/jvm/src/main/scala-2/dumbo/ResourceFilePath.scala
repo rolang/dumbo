@@ -22,6 +22,15 @@ final case class ResourceFilePath(value: String) extends AnyVal {
 }
 
 object ResourceFilePath {
+  @scala.annotation.tailrec
+  private def listRec(dirs: List[File], files: List[File]): List[File] =
+    dirs match {
+      case x :: xs =>
+        val (d, f) = x.listFiles().toList.partition(_.isDirectory())
+        listRec(d ::: xs, f ::: files)
+      case Nil => files
+    }
+
   private[dumbo] def fromResourcesDir[F[_]: Sync](location: String): (String, F[List[ResourceFilePath]]) =
     Try(getClass().getClassLoader().getResources(location).asScala.toList) match {
       case Failure(err)                                           => ("", Sync[F].raiseError(err))
@@ -33,10 +42,9 @@ object ResourceFilePath {
           Sync[F].delay {
             val base = Paths.get(url.toURI())
             val resources =
-              new File(base.toString())
-                .list()
-                .map(fileName => ResourceFilePath(s"/$location/$fileName"))
-                .toList
+              listRec(List(new File(base.toString())), Nil).map(f =>
+                ResourceFilePath(s"/$location/${base.relativize(Paths.get(f.getAbsolutePath()))}")
+              )
             resources
           },
         )
