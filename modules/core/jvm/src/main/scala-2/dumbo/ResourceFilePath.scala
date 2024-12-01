@@ -65,7 +65,7 @@ object ResourceFilePath {
           .entries()
           .asScala
           .toList
-          .filter(_.getName().startsWith(location))
+          .filter(e => e.getName().startsWith(location) && !e.isDirectory())
           .map(entry => ResourceFilePath(s"/${entry.getName()}"))
       }
     }
