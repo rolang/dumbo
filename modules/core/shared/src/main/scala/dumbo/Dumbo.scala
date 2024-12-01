@@ -222,12 +222,18 @@ class Dumbo[F[_]: Sync: Console](
       version = source.versionText,
       description = source.scriptDescription,
       `type` = "SQL",
-      script = source.path.fileName,
+      script = historyScriptPath(source),
       checksum = Some(source.checksum),
       executionTimeMs = duration.toMillis.toInt,
       success = true,
     )
   }
+
+  private def historyScriptPath(resource: ResourceFile) =
+    resReader.locationRel match {
+      case Some(loc) => resource.path.value.stripPrefix(s"/$loc/")
+      case _         => resource.fileName
+    }
 
   private def validationGuard(session: Session[F], resources: ResourceFiles) =
     if (resources.nonEmpty) {
@@ -446,13 +452,13 @@ class Dumbo[F[_]: Sync: Console](
     resources: ResourceFiles,
   ): ValidatedNec[DumboValidationException, Unit] = {
     val versionedMap: Map[String, ResourceFile] = resources.versioned.map { case (v, f) => (v.text, f) }.toMap
-    val repeatablesFileNames: Set[String]       = resources.repeatable.map(_._2.fileName).toSet
+    val repeatablesScriptNames: Set[String]     = resources.repeatable.map(_._2.path.value).toSet
 
     history
       .filter(_.`type` == "SQL")
       .traverse { h =>
         versionedMap.get(h.version.getOrElse("")) match {
-          case None if !repeatablesFileNames.contains(h.script) =>
+          case None if !repeatablesScriptNames.exists(_.endsWith(h.script)) =>
             new DumboValidationException(s"Detected applied migration not resolved locally ${h.script}")
               .invalidNec[Unit]
 

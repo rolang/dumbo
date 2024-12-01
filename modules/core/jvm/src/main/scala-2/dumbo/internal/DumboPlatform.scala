@@ -12,7 +12,11 @@ private[dumbo] trait DumboPlatform {
     val (locationInfo, resources) = ResourceFilePath.fromResourcesDir(location)
 
     new DumboWithResourcesPartiallyApplied[F](
-      ResourceReader.embeddedResources(resources, Some(locationInfo))
+      ResourceReader.embeddedResources(
+        readResources = resources,
+        locationInfo = Some(locationInfo),
+        locationRelative = Some(location),
+      )
     )
   }
 }

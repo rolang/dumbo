@@ -38,9 +38,18 @@ object ResourceFilePath:
 
           Expr(resources)
         else
+          @scala.annotation.tailrec
+          def listRec(dirs: List[File], files: List[File]): List[File] =
+            dirs match
+              case x :: xs =>
+                val (d, f) = x.listFiles().toList.partition(_.isDirectory())
+                listRec(d ::: xs, f ::: files)
+              case Nil => files
+
           val base = Paths.get(head.toURI())
-          val resources =
-            new File(base.toString()).list().map(fileName => s"/$location/$fileName").toList
+          val resources = listRec(List(File(base.toString())), Nil).map(f =>
+            s"/$location/${base.relativize(Paths.get(f.getAbsolutePath()))}"
+          )
           Expr(resources)
       case Nil => report.errorAndAbort(s"resource ${location} was not found")
       case multiple =>
