@@ -138,6 +138,19 @@ trait DumboFlywaySpec extends ffstest.FTest {
     } yield ()
   }
 
+  dbTest("Compatible with nested directories") {
+    val schema = "schema_1"
+
+    for {
+      _             <- flywayMigrate(schema, Path("db/nested")).map(r => assert(r.migrationsExecuted == 6))
+      historyFlyway <- loadHistory(schema)
+      _             <- dropSchemas
+      _             <- dumboMigrate(schema, dumboWithResources("db/nested")).map(r => assert(r.migrationsExecuted == 6))
+      historyDumbo  <- loadHistory(schema)
+      _              = assertEqualHistory(historyDumbo, historyFlyway)
+    } yield ()
+  }
+
   dbTest("Dumbo updates history entry of latest unsucessfully applied migration by Flyway") {
     // run on CockroachDb only just because it was the easiest way to reproduce a history record for an unsuccessfully applied migration with Flyway
     if (db == Db.CockroachDb) {

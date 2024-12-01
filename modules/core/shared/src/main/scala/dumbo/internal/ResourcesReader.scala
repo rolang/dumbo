@@ -4,6 +4,8 @@
 
 package dumbo.internal
 
+import java.io.File
+
 import cats.effect.Sync
 import cats.implicits.*
 import dumbo.ResourceFilePath
@@ -11,6 +13,10 @@ import fs2.io.file.{Files as Fs2Files, Flags, Path}
 import fs2.{Stream, text}
 
 private[dumbo] trait ResourceReader[F[_]] {
+  // relative location info e.g. "db/migration"
+  def locationRel: Option[String]
+
+  // relative or absolute location info e.g. "file:/project/resources/db/migration"
   def location: Option[String]
 
   def list: fs2.Stream[F, ResourceFilePath]
@@ -28,12 +34,22 @@ private[dumbo] object ResourceReader {
 
     @inline def absolutePath(p: Path) = if (p.isAbsolute) p else base / p
 
+    @scala.annotation.tailrec
+    def listRec(dirs: List[File], files: List[File]): List[File] =
+      dirs match {
+        case x :: xs =>
+          val (d, f) = x.listFiles().toList.partition(_.isDirectory())
+          listRec(d ::: xs, f ::: files)
+        case Nil => files
+      }
+
     new ResourceReader[F] {
-      override val location: Option[String] = Some(absolutePath(sourceDir).toString)
+      override val locationRel: Option[String] = Some(sourceDir.toString)
+      override val location: Option[String]    = Some(absolutePath(sourceDir).toString)
       override def list: Stream[F, ResourceFilePath] =
-        Fs2Files[F]
-          .list(absolutePath(sourceDir))
-          .map(p => ResourceFilePath(p.toString))
+        Stream.emits(
+          listRec(List(new File(absolutePath(sourceDir).toString)), Nil).map(f => ResourceFilePath(f.getPath()))
+        )
 
       override def readUtf8Lines(path: ResourceFilePath): Stream[F, String] =
         Fs2Files[F].readUtf8Lines(absolutePath(Path(path.value)))
@@ -48,8 +64,11 @@ private[dumbo] object ResourceReader {
   def embeddedResources[F[_]: Sync](
     readResources: F[List[ResourceFilePath]],
     locationInfo: Option[String] = None,
+    locationRelative: Option[String] = None,
   ): ResourceReader[F] =
     new ResourceReader[F] {
+      override val locationRel: Option[String] = locationRelative
+
       override val location: Option[String] = locationInfo
 
       override def list: Stream[F, ResourceFilePath] = Stream.evals(readResources)
