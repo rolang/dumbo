@@ -8,15 +8,13 @@ import java.io.File
 
 import cats.effect.Sync
 import cats.implicits.*
-import dumbo.ResourceFilePath
+import dumbo.{ResourceFile, ResourceFilePath}
 import fs2.io.file.{Files as Fs2Files, Flags, Path}
 import fs2.{Stream, text}
 
 private[dumbo] trait ResourceReader[F[_]] {
-  // relative location info e.g. "db/migration"
-  def locationRel: Option[String]
+  def relativeResourcePath(resource: ResourceFile): String
 
-  // relative or absolute location info e.g. "file:/project/resources/db/migration"
   def location: Option[String]
 
   def list: fs2.Stream[F, ResourceFilePath]
@@ -44,8 +42,11 @@ private[dumbo] object ResourceReader {
       }
 
     new ResourceReader[F] {
-      override val locationRel: Option[String] = Some(sourceDir.toString)
-      override val location: Option[String]    = Some(absolutePath(sourceDir).toString)
+
+      override def relativeResourcePath(resource: ResourceFile): String =
+        absolutePath(sourceDir).relativize(absolutePath(Path(resource.path.value))).toString
+
+      override val location: Option[String] = Some(absolutePath(sourceDir).toString)
       override def list: Stream[F, ResourceFilePath] =
         Stream.emits(
           listRec(List(new File(absolutePath(sourceDir).toString)), Nil).map(f => ResourceFilePath(f.getPath()))
@@ -67,7 +68,11 @@ private[dumbo] object ResourceReader {
     locationRelative: Option[String] = None,
   ): ResourceReader[F] =
     new ResourceReader[F] {
-      override val locationRel: Option[String] = locationRelative
+      override def relativeResourcePath(resource: ResourceFile): String =
+        locationRelative match {
+          case Some(l) => resource.path.value.stripPrefix(s"/$l/")
+          case _       => resource.fileName
+        }
 
       override val location: Option[String] = locationInfo
 

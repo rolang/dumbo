@@ -138,7 +138,7 @@ trait DumboFlywaySpec extends ffstest.FTest {
     } yield ()
   }
 
-  dbTest("Compatible with nested directories") {
+  dbTest("Compatible with nested directories  on reading from resources") {
     val schema = "schema_1"
 
     for {
@@ -148,6 +148,21 @@ trait DumboFlywaySpec extends ffstest.FTest {
       _             <- dumboMigrate(schema, dumboWithResources("db/nested")).map(r => assert(r.migrationsExecuted == 6))
       historyDumbo  <- loadHistory(schema)
       _              = assertEqualHistory(historyDumbo, historyFlyway)
+    } yield ()
+  }
+
+  dbTest("Compatible with nested directories on reading from filesystem") {
+    val schema = "schema_1"
+
+    for {
+      _             <- flywayMigrate(schema, Path("db/nested")).map(r => assert(r.migrationsExecuted == 6))
+      historyFlyway <- loadHistory(schema)
+      _             <- dropSchemas
+      _ <- dumboMigrate(schema, dumboWithFiles(Path("modules/tests/shared/src/test/resources/db/nested"))).map(r =>
+             assert(r.migrationsExecuted == 6)
+           )
+      historyDumbo <- loadHistory(schema)
+      _             = assertEqualHistory(historyDumbo, historyFlyway)
     } yield ()
   }
 
