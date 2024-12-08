@@ -27,20 +27,20 @@ object ResourceFilePath:
           val srcUriStr   = head.toURI().toString()
           val jarFilePath = srcUriStr.slice(srcUriStr.lastIndexOf(":") + 1, srcUriStr.lastIndexOf("!"))
 
-          def openJar(path: String) = try {
-            java.util.zip.ZipFile(jarFilePath)
-          } catch {
-            case _: Throwable =>
-              // another attempt as a (hopefully temporary) workaround in case a path got URL encoded twice
-              // e.g. a common SNAPSHOT version may contain a '+' sign and look like 'my-lib-0.0.0+123-456-SNAPSHOT'
-              // it seems to end up URL encoded on the file system (at least via coursier) and look like that "my-lib-0.0.0%2B123-456-SNAPSHOT.jar"
-              // on getting the URL via getResources() the path is URL encoded again and becomes: "my-lib-0.0.0%252B123-456-SNAPSHOT.jar"
-              // not sure yet which side would need to fix that, for now this gets it working
-              // helps only with a double encoded `+` sign which may be commonly used in snapshot versions
-              java.util.zip.ZipFile(jarFilePath.replace("%252B", "%2B"))
-          }
-
-          val resources = scala.util.Using.resource(openJar(jarFilePath)) { fs =>
+          val resources = scala.util.Using.resource {
+            try {
+              java.util.zip.ZipFile(jarFilePath)
+            } catch {
+              case _: Throwable =>
+                // another attempt as a (hopefully temporary) workaround in case a path got URL encoded twice
+                // e.g. a common SNAPSHOT version may contain a '+' sign and look like 'my-lib-0.0.0+123-456-SNAPSHOT'
+                // it seems to end up URL encoded on the file system (at least via coursier) and look like that "my-lib-0.0.0%2B123-456-SNAPSHOT.jar"
+                // on getting the URL via getResources() the path is URL encoded again and becomes: "my-lib-0.0.0%252B123-456-SNAPSHOT.jar"
+                // not sure yet which side would need to fix that, for now this gets it working
+                // helps only with a double encoded `+` sign which may be commonly used in snapshot versions
+                java.util.zip.ZipFile(jarFilePath.replace("%252B", "%2B"))
+            }
+          } { fs =>
             fs
               .entries()
               .asScala
