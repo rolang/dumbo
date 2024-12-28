@@ -1,6 +1,6 @@
-//> using scala 3.3.3
-//> using resourceDir ../resources
-//> using dep "dev.rolang::dumbo::0.5.3"
+// Copyright (c) 2023 by Roman Langolf
+// This software is licensed under the MIT License (MIT).
+// For more information see LICENSE or https://opensource.org/licenses/MIT
 
 import cats.effect.{IO, IOApp}
 import dumbo.{ConnectionConfig, Dumbo}
