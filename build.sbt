@@ -1,6 +1,6 @@
 import scala.scalanative.build.*
 
-lazy val `scala-2.13` = "2.13.15"
+lazy val `scala-2.13` = "2.13.16"
 lazy val `scala-3`    = "3.3.4"
 
 ThisBuild / tlBaseVersion      := "0.5"
