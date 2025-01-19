@@ -167,7 +167,7 @@ sealed trait ResourceVersion extends Ordered[ResourceVersion] {
 }
 
 object ResourceVersion {
-  case class Repeatable(description: String)                          extends ResourceVersion
+  case class Repeatable(description: String) extends ResourceVersion
   final case class Versioned(text: String, parts: NonEmptyList[Long]) extends ResourceVersion {
     // strip trailing 0
     // 1.0 -> 1
