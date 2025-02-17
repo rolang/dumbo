@@ -114,7 +114,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       customSchemas <-
         s.execute(
           sql"""|SELECT schema_name::text
-                |FROM information_schema.schemata 
+                |FROM information_schema.schemata
                 |WHERE schema_name NOT LIKE 'pg\_%' AND schema_name NOT LIKE 'crdb\_%' AND schema_name NOT IN ('information_schema', 'public')""".stripMargin
             .query(skunk.codec.text.text)
         )
