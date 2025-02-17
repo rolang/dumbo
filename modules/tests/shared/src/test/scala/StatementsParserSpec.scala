@@ -38,14 +38,14 @@ class StatementsSpec extends ffstest.FTest {
         |
         |INSERT INTO table_name (id, data, active, created_at, updated_at)
         |VALUES (
-        |  '1', 
+        |  '1',
         |  format('{
         |     "id": "1",
-        |     "data":{ 
+        |     "data":{
         |        "text": ";'';abc;''; \"efg\" ; -- include me in this text"
         |     },
         |     "active":true,
-        |     "created_at": "%s", 
+        |     "created_at": "%s",
         |     "updated_at": "%s"}',
         |     now(),
         |     now()
@@ -54,12 +54,12 @@ class StatementsSpec extends ffstest.FTest {
         | now(),
         | now());
         |
-        |-- ignore this 
+        |-- ignore this
         |  -- and this
         |
         |  /* ad this; multiline comment
         |* with nesting; /* nested block comment; */
-        |;*/ 
+        |;*/
         |select 1
         |""".stripMargin
     )
@@ -106,14 +106,14 @@ class StatementsSpec extends ffstest.FTest {
       res(4).trim,
       """|INSERT INTO table_name (id, data, active, created_at, updated_at)
          |VALUES (
-         |  '1', 
+         |  '1',
          |  format('{
          |     "id": "1",
-         |     "data":{ 
+         |     "data":{
          |        "text": ";'';abc;''; \"efg\" ; -- include me in this text"
          |     },
          |     "active":true,
-         |     "created_at": "%s", 
+         |     "created_at": "%s",
          |     "updated_at": "%s"}',
          |     now(),
          |     now()
@@ -125,12 +125,12 @@ class StatementsSpec extends ffstest.FTest {
 
     assertEquals(
       res(5).trim,
-      """|-- ignore this 
+      """|-- ignore this
          |  -- and this
          |
          |  /* ad this; multiline comment
          |* with nesting; /* nested block comment; */
-         |;*/ 
+         |;*/
          |select 1""".stripMargin,
     )
   }
