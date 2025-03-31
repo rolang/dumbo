@@ -243,7 +243,7 @@ lazy val epollcatVersion = "0.1.6"
 
 lazy val munitVersion = "1.0.0"
 
-lazy val munitCEVersion = "2.0.0"
+lazy val munitCEVersion = "2.1.0"
 
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
