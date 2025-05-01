@@ -11,6 +11,7 @@ import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
 import dumbo.exception.DumboValidationException
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import dumbo.logging.Implicits.console
 
 object Dumbo extends dumbo.internal.PlatformApp {
   private def printHelp(cmd: Option[Command] = None) = {

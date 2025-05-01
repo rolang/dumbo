@@ -16,6 +16,7 @@ import cats.effect.std.Console
 import cats.effect.{IO, Resource, std}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
+import dumbo.logging.Implicits.console
 import dumbo.{ConnectionConfig, Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
