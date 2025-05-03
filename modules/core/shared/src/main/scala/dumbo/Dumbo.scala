@@ -50,7 +50,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit S: Sync[F], C: Logger[F]): Dumbo[F] =
+  )(implicit S: Sync[F], L: Logger[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
       sessionResource = sessionResource,
@@ -182,8 +182,8 @@ class Dumbo[F[_]: Sync: Logger](
 
   private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] = {
     val toVersion = source.versionText match {
-      case Some(v) => s"to version $v - ${source.scriptDescription}"
-      case _       => s"with repeatable migration ${source.scriptDescription}"
+      case Some(v) => s"to version $v - \"${source.scriptDescription}\""
+      case _       => s"with repeatable migration \"${source.scriptDescription}\""
     }
 
     for {

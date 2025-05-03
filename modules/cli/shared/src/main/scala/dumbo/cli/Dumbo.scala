@@ -11,7 +11,7 @@ import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
 import dumbo.exception.DumboValidationException
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-import dumbo.logging.Implicits.console
+import dumbo.logging.Implicits.consolePrettyWithTimestamp
 
 object Dumbo extends dumbo.internal.PlatformApp {
   private def printHelp(cmd: Option[Command] = None) = {
@@ -52,7 +52,7 @@ object Dumbo extends dumbo.internal.PlatformApp {
            .getOrElse("[command]")}
           |$commandsHelp${configsHelp.getOrElse("")}$usageExample""".stripMargin
 
-    IO.println(help)
+    Console[IO].println(help)
   }
 
   private[dumbo] def dumboFromConfigs(
@@ -136,11 +136,13 @@ object Dumbo extends dumbo.internal.PlatformApp {
           case Command.Migrate :: Nil  => runMigration(argsResult.configs)
           case Command.Validate :: Nil => runValidation(argsResult.configs)
           case Command.Version :: Nil =>
-            IO.println(
-              s"""|Dumbo
-                  |Version: ${BuildInfo.version}
-                  |Built using Scala ${BuildInfo.scalaVersion} and Scala Native ${BuildInfo.scalaNativeVersion}""".stripMargin
-            ).as(ExitCode.Success)
+            Console[IO]
+              .println(
+                s"""|Dumbo
+                    |Version: ${BuildInfo.version}
+                    |Built using Scala ${BuildInfo.scalaVersion} and Scala Native ${BuildInfo.scalaNativeVersion}""".stripMargin
+              )
+              .as(ExitCode.Success)
           case Command.Help :: cmd :: Nil => printHelp(Some(cmd)).as(ExitCode.Success)
           case multiple =>
             Console[IO]
