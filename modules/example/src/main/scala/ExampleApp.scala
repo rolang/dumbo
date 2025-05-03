@@ -3,6 +3,7 @@
 // For more information see LICENSE or https://opensource.org/licenses/MIT
 
 import cats.effect.{IO, IOApp}
+import dumbo.logging.Implicits.console
 import dumbo.{ConnectionConfig, Dumbo}
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
