@@ -4,19 +4,17 @@
 
 package ffstest
 
-import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicReference
 
 import scala.concurrent.duration.*
 import scala.util.Random
 
-import cats.Show
 import cats.data.ValidatedNec
 import cats.effect.std.Console
-import cats.effect.{IO, Resource, std}
+import cats.effect.{IO, Resource}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
-import dumbo.logging.Implicits.consolePrettyWithTimestamp
+import dumbo.logging.{LogLevel, Logger}
 import dumbo.{ConnectionConfig, Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
@@ -62,7 +60,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
     logMigrationStateAfter: Duration = Duration.Inf,
-  )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
+  )(implicit l: Logger[IO]): IO[Dumbo.MigrationResult] =
     (if (logMigrationStateAfter.isFinite) {
        withResources.withMigrationStateLogAfter(FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
          connection = connectionConfig,
@@ -88,7 +86,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     schemas: List[String] = Nil,
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
-  )(implicit c: std.Console[IO]): IO[Dumbo.MigrationResult] =
+  )(implicit l: Logger[IO]): IO[Dumbo.MigrationResult] =
     withResources
       .withSession(
         sessionResource = session,
@@ -103,12 +101,14 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     defaultSchema: String,
     withResources: DumboWithResourcesPartiallyApplied[IO],
     schemas: List[String] = Nil,
-  ): IO[ValidatedNec[DumboValidationException, Unit]] =
+  ): IO[ValidatedNec[DumboValidationException, Unit]] = {
+    import dumbo.logging.Implicits.consolePrettyWithTimestamp
     withResources(
       connection = connectionConfig,
       defaultSchema = defaultSchema,
       schemas = schemas.toSet,
     ).runValidationWithHistory
+  }
 
   def dropSchemas: IO[Unit] = session().use { s =>
     for {
@@ -126,16 +126,14 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
   }
 }
 
-class TestConsole extends Console[IO] {
-  val logs: AtomicReference[Vector[String]] = new AtomicReference(Vector.empty[String])
+class TestLogger extends Logger[IO] {
+  private val underlying = Logger.fromConsoleWithTimestamp(console = Console[IO], pretty = true)
+
+  val logs: AtomicReference[Vector[(LogLevel, String)]] = new AtomicReference(Vector.empty)
 
   def flush(): Unit = logs.set(Vector.empty)
 
-  override def readLineWithCharset(charset: Charset): IO[String] = ???
-  override def print[A](a: A)(implicit S: Show[A]): IO[Unit]     = ???
-  override def println[A](a: A)(implicit S: Show[A]): IO[Unit] = IO {
-    println(S.show(a)); logs.getAndUpdate(_ :+ S.show(a))
+  override def apply(level: LogLevel, message: => String): IO[Unit] = underlying.apply(level, message) *> IO {
+    logs.getAndUpdate(_ :+ (level, message))
   }.void
-  override def error[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))
-  override def errorln[A](a: A)(implicit S: Show[A]): IO[Unit] = IO.println(S.show(a))
 }

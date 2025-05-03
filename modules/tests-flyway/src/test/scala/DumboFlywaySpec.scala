@@ -8,6 +8,7 @@ import scala.io.AnsiColor
 
 import cats.data.NonEmptyList
 import cats.effect.IO
+import dumbo.logging.Implicits.consolePrettyWithTimestamp
 import fs2.io.file.Path
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
