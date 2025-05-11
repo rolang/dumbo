@@ -8,7 +8,9 @@ import scala.concurrent.duration.*
 
 import cats.data.Validated.Invalid
 import cats.implicits.*
-import ffstest.TestConsole
+import dumbo.logging.Implicits.consolePrettyWithTimestamp
+import dumbo.logging.LogLevel
+import ffstest.TestLogger
 import skunk.codec.all.*
 import skunk.implicits.*
 
@@ -173,17 +175,18 @@ trait DumboMigrationSpec extends ffstest.FTest {
   dbTest("warn if schemas are not included in the search path for custom sessions") {
     val withResources = dumboWithResources("db/test_search_path")
     val schemas       = List("schema_1", "schema_2")
-    val testConsole   = new TestConsole
-    val hasWarning    = (m: String) => m.contains("""The search_path will be set to 'schema_1, schema_2'""")
-    val hasMissingSchemaWarning = (m: String) =>
+    val testConsole   = new TestLogger
+    def hasWarning(l: LogLevel, m: String) =
+      l == LogLevel.Warn && m.contains("""The search_path will be set to 'schema_1, schema_2'""")
+    def hasMissingSchemaWarning(l: LogLevel, m: String) =
       m.contains(
         """Following schemas are not included in the search path '"$user", public': schema_1, schema_2"""
-      ) && hasWarning(m)
+      ) && hasWarning(l, m)
 
-    val hasWrongOrderWarning = (m: String) =>
+    def hasWrongOrderWarning(l: LogLevel, m: String) =
       m.contains(
         """Default schema 'schema_1' is not in the right position of the search path 'schema_2, schema_1'"""
-      ) && hasWarning(m)
+      ) && hasWarning(l, m)
 
     def migrateBySession(params: Map[String, String] = Map.empty) =
       dumboMigrateWithSession(schemas.head, withResources, session(params), schemas.tail)(testConsole).attempt
@@ -192,17 +195,17 @@ trait DumboMigrationSpec extends ffstest.FTest {
       // warn about missing schemas in the search_path
       dumboRes <- migrateBySession()
       _         = assert(dumboRes.isRight)
-      _         = assert(testConsole.logs.get().exists(hasMissingSchemaWarning))
+      _         = assert(testConsole.logs.get().exists(hasMissingSchemaWarning.tupled))
       // warn about wrong order in the search_path
       _         <- { testConsole.flush(); dropSchemas }
       dumboResB <- migrateBySession(Map("search_path" -> "schema_2,schema_1"))
       _          = assert(dumboResB.isRight)
-      _          = assert(testConsole.logs.get().exists(hasWrongOrderWarning))
+      _          = assert(testConsole.logs.get().exists(hasWrongOrderWarning.tupled))
       // succeed without warning if search_path is set as expected
       _         <- { testConsole.flush(); dropSchemas }
       dumboResC <- migrateBySession(Map("search_path" -> "schema_1,schema_2"))
       _          = assert(dumboResC.isRight)
-      _          = assert(!testConsole.logs.get().exists(hasWarning))
+      _          = assert(!testConsole.logs.get().exists(hasWarning.tupled))
     } yield ()
   }
 
@@ -260,26 +263,28 @@ trait DumboMigrationSpec extends ffstest.FTest {
   }
 
   {
-    val withResources                = dumboWithResources("db/test_long_running")
-    def logMatch(s: String): Boolean = s.startsWith("Awaiting query with pid")
+    val withResources                             = dumboWithResources("db/test_long_running")
+    def logMatch(l: LogLevel, s: String): Boolean = l == LogLevel.Info && s.startsWith("Awaiting query with pid")
 
     dbTest("don't log on waiting for lock release if under provided duration") {
-      val testConsole = new TestConsole()
+      val testLogger = new TestLogger()
       for {
-        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 5.second)(testConsole)
-        _  = assert(testConsole.logs.get().count(logMatch) == 0)
+        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 5.second)(testLogger)
+        _  = assert(testLogger.logs.get().count(logMatch.tupled) == 0)
       } yield ()
     }
 
     dbTest("log on waiting for lock release longer than provided duration") {
-      val testConsole = new TestConsole()
+      val testLogger = new TestLogger()
 
       for {
-        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(testConsole)
+        _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(testLogger)
         _ = db match {
-              case Db.Postgres(_) => assert(testConsole.logs.get().count(logMatch) >= 2)
+              case Db.Postgres(_) => assert(testLogger.logs.get().count(logMatch.tupled) >= 2)
               case Db.CockroachDb =>
-                assert(testConsole.logs.get().count(_.startsWith("Progress monitor is not supported")) == 1)
+                assert(testLogger.logs.get().count { case (level, message) =>
+                  level == LogLevel.Warn && message.startsWith("Progress monitor is not supported")
+                } == 1)
             }
       } yield ()
     }
