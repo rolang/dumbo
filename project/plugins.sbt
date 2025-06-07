@@ -12,6 +12,6 @@ addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % sbtTlVersion)
 
 addSbtPlugin("org.typelevel" % "sbt-typelevel" % sbtTlVersion)
 
-addSbtPlugin("com.armanbilge" % "sbt-scala-native-config-brew" % "0.3.0")
+addSbtPlugin("com.armanbilge" % "sbt-scala-native-config-brew" % "0.4.0")
 
 addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.13.1")
