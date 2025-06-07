@@ -132,7 +132,7 @@ class TestConsole extends Console[IO] {
 
   override def readLineWithCharset(charset: Charset): IO[String] = ???
   override def print[A](a: A)(implicit S: Show[A]): IO[Unit]     = ???
-  override def println[A](a: A)(implicit S: Show[A]): IO[Unit] = IO {
+  override def println[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO {
     println(S.show(a)); logs.getAndUpdate(_ :+ S.show(a))
   }.void
   override def error[A](a: A)(implicit S: Show[A]): IO[Unit]   = IO.println(S.show(a))

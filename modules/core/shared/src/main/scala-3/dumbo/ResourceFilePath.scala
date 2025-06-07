@@ -59,12 +59,12 @@ object ResourceFilePath:
                 listRec(d ::: xs, f ::: files)
               case Nil => files
 
-          val base = Paths.get(head.toURI())
+          val base      = Paths.get(head.toURI())
           val resources = listRec(List(File(base.toString())), Nil).map(f =>
             s"/$location/${base.relativize(Paths.get(f.getAbsolutePath()))}"
           )
           Expr(resources)
-      case Nil => report.errorAndAbort(s"resource ${location} was not found")
+      case Nil      => report.errorAndAbort(s"resource ${location} was not found")
       case multiple =>
         report.errorAndAbort(s"found multiple resource locations for ${location} in:\n${multiple.mkString("\n")}")
 
