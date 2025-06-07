@@ -96,7 +96,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
         .eval(sessionResource.use(s => Dumbo.hasTableLockSupport(s, s"${defaultSchema}.${schemaHistoryTable}")))
         .flatMap {
           case false => Resource.eval(Console[F].println("Progress monitor is not supported for current database"))
-          case true =>
+          case true  =>
             Async[F].background {
               Stream
                 .evalSeq(
@@ -119,7 +119,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
                     changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
                     queryLogSize = 150
                     queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
-                    _ <-
+                    _           <-
                       Console[F].println(
                         s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
                           s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
@@ -208,9 +208,9 @@ class Dumbo[F[_]: Sync: Console](
                          statements
                            .map(statementSql =>
                              new Statement[Void] {
-                               override val sql: String            = statementSql
-                               override val origin: Origin         = Origin(source.path.toString, line = 0)
-                               override val encoder: Encoder[Void] = Void.codec
+                               override val sql: String                  = statementSql
+                               override val origin: Origin               = Origin(source.path.toString, line = 0)
+                               override val encoder: Encoder[Void]       = Void.codec
                                override val cacheKey: Statement.CacheKey =
                                  Statement.CacheKey(statementSql, encoder.types, Nil)
                              }
@@ -235,7 +235,7 @@ class Dumbo[F[_]: Sync: Console](
         .execute(dumboHistory.loadAllQuery)
         .map(history => validate(history, resources))
         .flatMap {
-          case Valid(_) => ().pure[F]
+          case Valid(_)   => ().pure[F]
           case Invalid(e) =>
             new DumboValidationException(s"Error on validation:\n${e.toList.map(_.getMessage).mkString("\n")}")
               .raiseError[F, Unit]
@@ -250,7 +250,7 @@ class Dumbo[F[_]: Sync: Console](
     resources: ResourceFiles
   ): F[MigrateToNextResult] =
     resources match {
-      case ResourceFiles(Nil, Nil) => none.pure[F]
+      case ResourceFiles(Nil, Nil)               => none.pure[F]
       case ResourceFiles(versioned, repeatables) =>
         (for {
           txn <- session.transaction
@@ -261,7 +261,7 @@ class Dumbo[F[_]: Sync: Console](
                  else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
             res <- processVersioned(versioned, session, fs).flatMap {
                      case Some((newEntry, files)) => (newEntry, ResourceFiles(files, repeatables)).some.pure[F]
-                     case _ =>
+                     case _                       =>
                        processRepeatables(repeatables, session, fs).flatMap[MigrateToNextResult] {
                          case Some((newEntry, files)) =>
                            (newEntry, ResourceFiles(Nil, files)).some.pure[F]
@@ -281,7 +281,7 @@ class Dumbo[F[_]: Sync: Console](
     for {
       latestInstalled <- session.option(dumboHistory.latestVersionedInstalled)
       latestInstalledV = latestInstalled.map(l => (l.resourceVersion, l.success))
-      result <- versioned.dropWhile { case (v, _) =>
+      result          <- versioned.dropWhile { case (v, _) =>
                   latestInstalledV match {
                     // drop versions applied successfully
                     // retry the version which was not applied successfully
@@ -311,7 +311,7 @@ class Dumbo[F[_]: Sync: Console](
   else
     for {
       latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled).map(_.toMap)
-      res <- repeatables.filter { case (_, f) =>
+      res               <- repeatables.filter { case (_, f) =>
                latestRepeatables.get(f.scriptDescription) match {
                  case Some(checksum) => checksum != f.checksum
                  case _              => true
@@ -398,14 +398,14 @@ class Dumbo[F[_]: Sync: Console](
            case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
          }
     tableLockSupport <- hasTableLockSupport(session, historyTable)
-    _ <- schemaRes match {
+    _                <- schemaRes match {
            case e @ (_ :: _) => session.execute(dumboHistory.insertSchemaEntry)(e.mkString("\"", "\",\"", "\"")).void
            case _            => ().pure[F]
          }
 
     migrationResult <- for {
                          resources <- listMigrationFiles(resReader).flatMap {
-                                        case Valid(f) => f.pure[F]
+                                        case Valid(f)      => f.pure[F]
                                         case Invalid(errs) =>
                                           new DumboValidationException(
                                             s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
@@ -415,7 +415,7 @@ class Dumbo[F[_]: Sync: Console](
                            val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
                            Console[F].println(s"Found ${resources.length} migration files$inLocation")
                          }
-                         _ <- if (validateOnMigrate) validationGuard(session, resources) else ().pure[F]
+                         _               <- if (validateOnMigrate) validationGuard(session, resources) else ().pure[F]
                          migrationResult <-
                            Stream
                              .unfoldEval(resources)(migrateToNext(session, resReader, tableLockSupport))
@@ -425,7 +425,7 @@ class Dumbo[F[_]: Sync: Console](
                        } yield migrationResult
 
     _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse) match {
-           case Nil => Console[F].println(s"Schema ${defaultSchema} is up to date. No migration necessary")
+           case Nil     => Console[F].println(s"Schema ${defaultSchema} is up to date. No migration necessary")
            case history =>
              val verLog = history.collectFirst { case HistoryEntry(_, Some(v), _, _, _, _, _, _, _, _) => v }
                .map(v => s", now at version $v")
@@ -536,8 +536,8 @@ object Dumbo extends internal.DumboPlatform {
       val duplicates    = files.groupBy(_.version).filter(_._2.length > 1).toList
 
       (duplicates, errs.map(new DumboValidationException(_))) match {
-        case (Nil, Nil)     => files.sorted.validNec[DumboValidationException]
-        case (Nil, x :: xs) => NonEmptyChain(x, xs*).invalid[List[ResourceFile]]
+        case (Nil, Nil)         => files.sorted.validNec[DumboValidationException]
+        case (Nil, x :: xs)     => NonEmptyChain(x, xs*).invalid[List[ResourceFile]]
         case (diff, exceptions) =>
           NonEmptyChain(
             new DumboValidationException(
@@ -585,7 +585,7 @@ object Dumbo extends internal.DumboPlatform {
   private[dumbo] def checksum[F[_]: Sync](p: ResourceFilePath, fs: ResourceReader[F]): F[Int] =
     for {
       crc32 <- (new CRC32()).pure[F]
-      _ <- fs.readUtf8Lines(p)
+      _     <- fs.readUtf8Lines(p)
              .map { line =>
                crc32.update(line.getBytes(StandardCharsets.UTF_8))
              }

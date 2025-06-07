@@ -14,7 +14,7 @@ class DumboResourcesSpec extends ffstest.FTest {
   test("list migration files from resources") {
     for {
       files <- dumboWithResources("db/test_1").listMigrationFiles
-      _ = files match {
+      _      = files match {
             case Valid(files) =>
               assert(
                 files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
@@ -32,7 +32,7 @@ class DumboResourcesSpec extends ffstest.FTest {
   test("list migration files from resources with subirectories") {
     for {
       files <- dumboWithResources("db/nested").listMigrationFiles
-      _ = files match {
+      _      = files match {
             case Valid(files) =>
               assert(
                 files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
@@ -52,7 +52,7 @@ class DumboResourcesSpec extends ffstest.FTest {
   test("list migration files from relative path") {
     for {
       files <- Dumbo.withFilesIn[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1")).listMigrationFiles
-      _ = files match {
+      _      = files match {
             case Valid(files) =>
               assert(
                 files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
@@ -93,7 +93,7 @@ class DumboResourcesSpec extends ffstest.FTest {
   test("fail on files with same versions") {
     for {
       result <- dumboWithResources("db/test_duplicate_versions").listMigrationFiles
-      _ = result match {
+      _       = result match {
             case Invalid(errs) =>
               assert(errs.toList.exists { err =>
                 val message = err.getMessage()
