@@ -77,10 +77,6 @@ jobs:
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
 
-      - name: Start up Postgres
-        if: startsWith(matrix.os, 'ubuntu')
-        run: docker compose up -d
-
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
         run: |
@@ -113,6 +109,10 @@ jobs:
       - name: nativeLink
         if: matrix.project == 'rootNative'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' Test/nativeLink
+
+      - name: Start up Postgres
+        if: startsWith(matrix.os, 'ubuntu')
+        run: docker compose up -d
 
       - name: Test
         if: startsWith(matrix.os, 'ubuntu')
@@ -224,10 +224,6 @@ jobs:
       - name: sbt update
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
-
-      - name: Start up Postgres
-        if: startsWith(matrix.os, 'ubuntu')
-        run: docker compose up -d
 
       - name: Download target directories (3, rootJVM)
         uses: actions/download-artifact@v4
@@ -393,10 +389,6 @@ jobs:
       - name: sbt update
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
-
-      - name: Start up Postgres
-        if: startsWith(matrix.os, 'ubuntu')
-        run: docker compose up -d
 
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2

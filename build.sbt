@@ -61,13 +61,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= List(
     name = Some(s"Install native dependencies ($os)"),
   )
 }
-ThisBuild / githubWorkflowJobSetup ++= Seq(
-  WorkflowStep.Run(
-    commands = List("docker compose up -d"),
-    name = Some("Start up Postgres"),
-    cond = Some("startsWith(matrix.os, 'ubuntu')"),
-  )
-)
+
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
     List("Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll"),
@@ -80,14 +74,21 @@ ThisBuild / githubWorkflowBuild := {
 
 // override Test step to run on ubuntu only due to requirement of docker
 ThisBuild / githubWorkflowBuild := {
-  (ThisBuild / githubWorkflowBuild).value.map {
+  (ThisBuild / githubWorkflowBuild).value.flatMap {
     case s if s.name.contains("Test") =>
-      WorkflowStep.Sbt(
-        List("test"),
-        name = Some("Test"),
-        cond = Some("startsWith(matrix.os, 'ubuntu')"),
+      List(
+        WorkflowStep.Run(
+          commands = List("docker compose up -d"),
+          name = Some("Start up Postgres"),
+          cond = Some("startsWith(matrix.os, 'ubuntu')"),
+        ),
+        WorkflowStep.Sbt(
+          List("test"),
+          name = Some("Test"),
+          cond = Some("startsWith(matrix.os, 'ubuntu')"),
+        ),
       )
-    case s => s
+    case s => List(s)
   }
 }
 
