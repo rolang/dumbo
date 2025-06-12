@@ -11,7 +11,7 @@ class DumboJvmSpecScala2 extends ffstest.FTest {
   test("fail on multiple resources") {
     for {
       result <- Dumbo.withResourcesIn[IO]("duplicated").listMigrationFiles.attempt
-      _ = result match {
+      _       = result match {
             case Right(_)  => fail("Expecting a failure")
             case Left(err) => assert(err.isInstanceOf[MultipleResoucesException])
           }
@@ -22,7 +22,7 @@ class DumboJvmSpecScala2 extends ffstest.FTest {
     for {
       result <- Dumbo.withResourcesIn[IO]("db/non_existing/path").listMigrationFiles.attempt
       _       = assert(result.isLeft)
-      _ = assert(
+      _       = assert(
             result.left.exists(e =>
               e.isInstanceOf[ResourcesLocationNotFund] && e.getMessage().contains("db/non_existing/path")
             )

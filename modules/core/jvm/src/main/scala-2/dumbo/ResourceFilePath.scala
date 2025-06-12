@@ -36,11 +36,11 @@ object ResourceFilePath {
       case Failure(err)                                           => ("", Sync[F].raiseError(err))
       case Success(Nil)                                           => ("", Sync[F].raiseError(new ResourcesLocationNotFund(s"resource ${location} was not found")))
       case Success(url :: Nil) if url.toString.startsWith("jar:") => (url.toString, listInJar(url.toURI(), location))
-      case Success(url :: Nil) =>
+      case Success(url :: Nil)                                    =>
         (
           url.toString,
           Sync[F].delay {
-            val base = Paths.get(url.toURI())
+            val base      = Paths.get(url.toURI())
             val resources =
               listRec(List(new File(base.toString())), Nil).map(f =>
                 ResourceFilePath(s"/$location/${base.relativize(Paths.get(f.getAbsolutePath()))}")
