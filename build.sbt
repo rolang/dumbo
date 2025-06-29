@@ -10,7 +10,7 @@ ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
 
 ThisBuild / organization := "dev.rolang"
 ThisBuild / licenses     := Seq(License.MIT)
-ThisBuild / developers := List(
+ThisBuild / developers   := List(
   Developer(id = "rolang", name = "Roman Langolf", email = "rolang@pm.me", url = url("https://rolang.dev"))
 )
 ThisBuild / versionScheme := Some("early-semver")
@@ -208,7 +208,7 @@ addCommandAlias("check", "; +Test/copyResources; +scalafixAll --check; +scalafmt
 lazy val commonSettings = List(
   // Headers
   headerMappings := headerMappings.value + (HeaderFileType.scala -> HeaderCommentStyle.cppStyleLineComment),
-  headerLicense := Some(
+  headerLicense  := Some(
     HeaderLicense.Custom(
       """|Copyright (c) 2023 by Roman Langolf
          |This software is licensed under the MIT License (MIT).
@@ -256,7 +256,7 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
     buildInfoPackage := "dumbo",
-    buildInfoKeys := {
+    buildInfoKeys    := {
       val isNative = crossProjectPlatform.value.identifier == "native"
       Seq[BuildInfoKey](
         version,
@@ -291,7 +291,7 @@ lazy val buildCliBinary = taskKey[File]("")
 buildCliBinary := {
   def normalise(s: String) = s.toLowerCase.replaceAll("[^a-z0-9]+", "")
   val props                = sys.props.toMap
-  val os = normalise(props.getOrElse("os.name", "")) match {
+  val os                   = normalise(props.getOrElse("os.name", "")) match {
     case p if p.startsWith("linux")                         => "linux"
     case p if p.startsWith("windows")                       => "windows"
     case p if p.startsWith("osx") || p.startsWith("macosx") => "macosx"
@@ -353,7 +353,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
 
 lazy val flywayVersion     = "11.0.0"
 lazy val postgresqlVersion = "42.7.6"
-lazy val testsFlyway = project
+lazy val testsFlyway       = project
   .in(file("modules/tests-flyway"))
   .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
   .dependsOn(core.jvm, tests.jvm % "compile->compile;test->test")

@@ -152,9 +152,9 @@ sealed trait ResourceVersion extends Ordered[ResourceVersion] {
       }
 
     (this, that) match {
-      case (Repeatable(_), Versioned(_, _))             => 1
-      case (Versioned(_, _), Repeatable(_))             => -1
-      case (Repeatable(descThis), Repeatable(descThat)) => descThis.compare(descThat)
+      case (Repeatable(_), Versioned(_, _))                   => 1
+      case (Versioned(_, _), Repeatable(_))                   => -1
+      case (Repeatable(descThis), Repeatable(descThat))       => descThis.compare(descThat)
       case (Versioned(_, thisParts), Versioned(_, thatParts)) =>
         cmprVersioned(thisParts.toList, thatParts.toList)
     }
@@ -167,7 +167,7 @@ sealed trait ResourceVersion extends Ordered[ResourceVersion] {
 }
 
 object ResourceVersion {
-  case class Repeatable(description: String) extends ResourceVersion
+  case class Repeatable(description: String)                          extends ResourceVersion
   final case class Versioned(text: String, parts: NonEmptyList[Long]) extends ResourceVersion {
     // strip trailing 0
     // 1.0 -> 1
