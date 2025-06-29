@@ -46,7 +46,7 @@ private[dumbo] object ResourceReader {
       override def relativeResourcePath(resource: ResourceFile): String =
         absolutePath(sourceDir).relativize(absolutePath(Path(resource.path.value))).toString
 
-      override val location: Option[String] = Some(absolutePath(sourceDir).toString)
+      override val location: Option[String]          = Some(absolutePath(sourceDir).toString)
       override def list: Stream[F, ResourceFilePath] =
         Stream.emits(
           listRec(List(new File(absolutePath(sourceDir).toString)), Nil).map(f => ResourceFilePath(f.getPath()))

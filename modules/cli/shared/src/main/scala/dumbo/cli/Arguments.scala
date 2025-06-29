@@ -31,7 +31,7 @@ object Arguments:
   private def toKeyValue(s: String): (String, Option[String]) =
     s.splitAt(s.indexOf('=')) match
       case ("", v) => (v, None)
-      case (k, v) =>
+      case (k, v)  =>
         (
           k,
           Some(
@@ -46,11 +46,11 @@ object Arguments:
     @tailrec
     def walk(args: List[String], result: Arguments): Arguments =
       args match
-        case Nil => result
+        case Nil         => result
         case arg :: tail =>
           Command.values.find(_.keys.contains(arg)) match
             case Some(cmd) => walk(tail, result.withCommand(cmd))
-            case None =>
+            case None      =>
               toKeyValue(arg) match
                 case (k, Some(value)) =>
                   Config.values.find(_.key == k) match
