@@ -62,7 +62,7 @@ object Dumbo extends dumbo.internal.PlatformApp {
 
     for {
       uri <- collectConfig(Config.Url).toRight("Missing url").flatten
-      _ <- Option(uri.getScheme()) match
+      _   <- Option(uri.getScheme()) match
              case None               => Left(s"Missing scheme in $uri")
              case Some("postgresql") => Right(())
              case Some(invalid)      => Left(s"Unsupported scheme $invalid")
@@ -77,7 +77,7 @@ object Dumbo extends dumbo.internal.PlatformApp {
       ssl      <- collectConfig(Config.Ssl).getOrElse(Right(dumbo.ConnectionConfig.SSL.None))
       location <- collectConfig(Config.Location).toRight("Missing location path").flatten
       schemas  <- collectConfig(Config.Schemas).getOrElse(Right(Set.empty))
-      table <- collectConfig(Config.Table) match
+      table    <- collectConfig(Config.Table) match
                  case None            => Right(None)
                  case Some(Left(err)) => Left(err)
                  case Some(Right(v))  => Right(Some(v))
@@ -115,10 +115,10 @@ object Dumbo extends dumbo.internal.PlatformApp {
 
   private def runValidation(options: List[(Config[?], String)]): IO[ExitCode] =
     dumboFromConfigs(options) match
-      case Left(value) => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
+      case Left(value)   => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
       case Right((d, _)) =>
         d.runValidationWithHistory.flatMap {
-          case Valid(_) => Console[IO].println("Validation result: ok").as(ExitCode.Success)
+          case Valid(_)   => Console[IO].println("Validation result: ok").as(ExitCode.Success)
           case Invalid(e) =>
             val errs = e.toNonEmptyList.toList.map(_.getMessage())
             Console[IO].errorln(s"Errors on validation: ${errs.mkString("\n", "\n", "")}").as(ExitCode.Success)
@@ -134,14 +134,14 @@ object Dumbo extends dumbo.internal.PlatformApp {
           case Command.Help :: Nil     => printHelp().as(ExitCode.Success)
           case Command.Migrate :: Nil  => runMigration(argsResult.configs)
           case Command.Validate :: Nil => runValidation(argsResult.configs)
-          case Command.Version :: Nil =>
+          case Command.Version :: Nil  =>
             IO.println(
               s"""|Dumbo
                   |Version: ${BuildInfo.version}
                   |Built using Scala ${BuildInfo.scalaVersion} and Scala Native ${BuildInfo.scalaNativeVersion}""".stripMargin
             ).as(ExitCode.Success)
           case Command.Help :: cmd :: Nil => printHelp(Some(cmd)).as(ExitCode.Success)
-          case multiple =>
+          case multiple                   =>
             Console[IO]
               .errorln(s"Multiple commands given: ${multiple.map(_.toString().toLowerCase()).mkString(", ")}")
               .as(ExitCode.Error)
