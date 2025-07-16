@@ -22,10 +22,11 @@ import fs2.io.file.*
 import fs2.io.net.Network
 import org.typelevel.otel4s.trace.Tracer
 import skunk.*
+import skunk.Session.Credentials
 import skunk.codec.all.*
 import skunk.data.Completion
 import skunk.implicits.*
-import skunk.util.{Origin, Typer}
+import skunk.util.Origin
 
 final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) {
   def apply(
@@ -145,20 +146,20 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     val searchPath = Dumbo.toSearchPath(defaultSchema, schemas)
     val params     = Session.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
 
-    Session.single[F](
-      host = connection.host,
-      port = connection.port,
-      user = connection.user,
-      database = connection.database,
-      password = connection.password,
-      strategy = Typer.Strategy.BuiltinsOnly,
-      ssl = connection.ssl match {
+    Session
+      .Builder[F]
+      .withHost(connection.host)
+      .withPort(connection.port)
+      .withDatabase(connection.database)
+      .withCredentials(Credentials(user = connection.user, password = connection.password))
+      .withTypingStrategy(skunk.TypingStrategy.BuiltinsOnly)
+      .withSSL(connection.ssl match {
         case ConnectionConfig.SSL.None    => SSL.None
         case ConnectionConfig.SSL.Trusted => SSL.Trusted
         case ConnectionConfig.SSL.System  => SSL.System
-      },
-      parameters = params,
-    )
+      })
+      .withConnectionParameters(params)
+      .single
   }
 }
 
