@@ -11,8 +11,9 @@ import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
 import dumbo.exception.DumboValidationException
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import cats.effect.IOApp
 
-object Dumbo extends dumbo.internal.PlatformApp {
+object Dumbo extends IOApp {
   private def printHelp(cmd: Option[Command] = None) = {
     val tab = "    "
 

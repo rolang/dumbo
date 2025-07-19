@@ -240,8 +240,6 @@ lazy val root = tlCrossRootProject
 
 lazy val skunkVersion = "1.0.0-M11"
 
-lazy val epollcatVersion = "0.1.6"
-
 lazy val munitVersion = "1.0.0"
 
 lazy val munitCEVersion = "2.1.0"
@@ -282,8 +280,7 @@ lazy val cli = crossProject(NativePlatform)
   .settings(commonSettings)
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
-    nativeBrewFormulas ++= brewFormulas,
+    nativeBrewFormulas ++= brewFormulas
   )
 
 lazy val cliNative      = cli.native
@@ -343,7 +340,6 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   )
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     nativeConfig ~= {
