@@ -3,7 +3,7 @@ import scala.scalanative.build.*
 lazy val `scala-2.13` = "2.13.16"
 lazy val `scala-3`    = "3.3.6"
 
-ThisBuild / tlBaseVersion      := "0.5"
+ThisBuild / tlBaseVersion      := "0.6"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
@@ -34,7 +34,7 @@ ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.t
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
-lazy val llvmVersion  = "17"
+lazy val llvmVersion  = "20"
 lazy val brewFormulas = Set("s2n", "utf8proc")
 lazy val isTagCond    = "startsWith(github.ref, 'refs/tags/')"
 
