@@ -13,7 +13,7 @@ import cats.data.Validated.{Invalid, Valid}
 import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.effect.kernel.Clock
 import cats.effect.std.Console
-import cats.effect.{Async, Resource, Sync, Temporal}
+import cats.effect.{Async, LiftIO, Resource, Sync, Temporal}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
 import dumbo.internal.{ResourceReader, Statements}
@@ -66,8 +66,8 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit A: Async[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
-    implicit val network: Network[F] = Network.forAsync(A)
+  )(implicit A: Async[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
+    implicit val network: Network[F] = Network.forLiftIO[F]
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
 
     withMigrationStateLogAfterBySession(logMigrationStateAfter)(
