@@ -3,7 +3,7 @@ import scala.scalanative.build.*
 lazy val `scala-2.13` = "2.13.16"
 lazy val `scala-3`    = "3.3.6"
 
-ThisBuild / tlBaseVersion      := "0.5"
+ThisBuild / tlBaseVersion      := "0.6"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
@@ -34,7 +34,7 @@ ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.t
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
-lazy val llvmVersion  = "17"
+lazy val llvmVersion  = "20"
 lazy val brewFormulas = Set("s2n", "utf8proc")
 lazy val isTagCond    = "startsWith(github.ref, 'refs/tags/')"
 
@@ -238,9 +238,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
-lazy val skunkVersion = "1.0.0-M10"
-
-lazy val epollcatVersion = "0.1.6"
+lazy val skunkVersion = "1.0.0-M11"
 
 lazy val munitVersion = "1.0.0"
 
@@ -282,8 +280,7 @@ lazy val cli = crossProject(NativePlatform)
   .settings(commonSettings)
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
-    nativeBrewFormulas ++= brewFormulas,
+    nativeBrewFormulas ++= brewFormulas
   )
 
 lazy val cliNative      = cli.native
@@ -343,7 +340,6 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   )
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     nativeConfig ~= {
