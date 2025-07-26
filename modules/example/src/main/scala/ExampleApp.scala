@@ -1,13 +1,13 @@
-// Copyright (c) 2023 by Roman Langolf
-// This software is licensed under the MIT License (MIT).
-// For more information see LICENSE or https://opensource.org/licenses/MIT
+//> using scala 3.7.1
+//> using resourceDir ../resources
+//> using dep "dev.rolang::dumbo::0.6.0"
 
 import cats.effect.{IO, IOApp}
 import dumbo.logging.Implicits.console
 import dumbo.{ConnectionConfig, Dumbo}
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
-object ExampleApp extends IOApp.Simple {
+object ExampleApp extends IOApp.Simple:
   def run = Dumbo
     .withResourcesIn[IO]("db/migration")
     .apply(
@@ -21,7 +21,5 @@ object ExampleApp extends IOApp.Simple {
       )
     )
     .runMigration
-    .flatMap { result =>
+    .flatMap: result =>
       IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
-    }
-}

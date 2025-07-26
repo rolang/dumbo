@@ -160,7 +160,7 @@ jobs:
 
       - name: Run example (covers reading resources from a jar at runtime)
         if: matrix.project == 'rootJVM'
-        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' example/run
+        run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'example/runMain ExampleApp'
 
       - name: Test reading resources from a jar at compile time
         if: matrix.project == 'rootJVM' && matrix.scala == '3'
@@ -393,5 +393,5 @@ jobs:
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
         with:
-          modules-ignore: sample-lib_3 dumbo_3 dumbo_2.13 testsflyway_3 testsflyway_2.13 dumbo_3 dumbo_2.13 dumbo_3 dumbo_2.13 tests_3 tests_2.13 example_3 example_2.13 sample-lib-test_3 tests_native0.4_3 tests_native0.4_2.13
+          modules-ignore: sample-lib_3 dumbo_3 dumbo_2.13 testsflyway_3 testsflyway_2.13 dumbo_3 dumbo_2.13 dumbo_3 dumbo_2.13 tests_3 tests_2.13 example_3 sample-lib-test_3 tests_native0.4_3 tests_native0.4_2.13
           configs-ignore: test scala-tool scala-doc-tool test-internal

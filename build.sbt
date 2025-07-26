@@ -1,7 +1,8 @@
 import scala.scalanative.build.*
 
-lazy val `scala-2.13` = "2.13.16"
-lazy val `scala-3`    = "3.3.6"
+lazy val `scala-2.13`     = "2.13.16"
+lazy val `scala-3`        = "3.3.6"
+lazy val `scala-3-latest` = "3.7.1"
 
 ThisBuild / tlBaseVersion      := "0.6"
 ThisBuild / startYear          := Some(2023)
@@ -191,7 +192,7 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
 }
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
-  List("example/run"),
+  List("example/runMain ExampleApp"),
   name = Some("Run example (covers reading resources from a jar at runtime)"),
   cond = Some("matrix.project == 'rootJVM'"),
 )
@@ -217,7 +218,7 @@ lazy val commonSettings = List(
     )
   ),
   libraryDependencies ++= {
-    if (scalaVersion.value == `scala-3`)
+    if (scalaVersion.value.startsWith("3"))
       Seq()
     else
       Seq(
@@ -371,9 +372,15 @@ lazy val example = project
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
+    scalaVersion          := `scala-3-latest`,
+    crossScalaVersions    := Seq(`scala-3-latest`),
     Compile / run / fork  := true,
     Compile / headerCheck := Nil,
     scalacOptions -= "-Werror",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "log4cats-slf4j"  % "2.7.1",
+      "ch.qos.logback" % "logback-classic" % "1.5.18",
+    ),
   )
 
 lazy val sampleLib = project
