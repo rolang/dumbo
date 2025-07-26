@@ -6,7 +6,7 @@ package dumbo.cli
 
 import cats.data.Validated.{Invalid, Valid}
 import cats.effect.std.Console
-import cats.effect.{ExitCode, IO}
+import cats.effect.{ExitCode, IO, IOApp}
 import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
 import dumbo.exception.DumboValidationException
