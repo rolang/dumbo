@@ -6,13 +6,10 @@ package ffstest
 
 import cats.effect.IO
 import dumbo.{Dumbo, DumboWithResourcesPartiallyApplied}
-import epollcat.unsafe.EpollRuntime
 import fs2.io.file.Path
 import munit.CatsEffectSuite
 
 trait FTestPlatform extends CatsEffectSuite {
-  override def munitIORuntime = EpollRuntime.global
-
   def dumboWithResources(path: String): DumboWithResourcesPartiallyApplied[IO] =
     dumboWithFiles(Path("modules/tests/shared/src/test/resources/" + path))
 

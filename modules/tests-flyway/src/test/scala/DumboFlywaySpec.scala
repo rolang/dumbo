@@ -89,7 +89,7 @@ trait DumboFlywaySpec extends ffstest.FTest {
       _        <- dropSchemas
       dumboRes <- dumboMigrate(schema, dumboWithResources("db/test_failing_sql")).attempt
       _         = assert(dumboRes.isLeft)
-      _ = assert(
+      _         = assert(
             dumboRes.left.exists(
               _.getMessage().linesIterator.exists(_.matches(""".*Relation ".*test" already exists.*"""))
             )
@@ -159,7 +159,7 @@ trait DumboFlywaySpec extends ffstest.FTest {
       _             <- flywayMigrate(schema, Path("db/nested")).map(r => assert(r.migrationsExecuted == 6))
       historyFlyway <- loadHistory(schema)
       _             <- dropSchemas
-      _ <- dumboMigrate(schema, dumboWithFiles(Path("modules/tests/shared/src/test/resources/db/nested"))).map(r =>
+      _             <- dumboMigrate(schema, dumboWithFiles(Path("modules/tests/shared/src/test/resources/db/nested"))).map(r =>
              assert(r.migrationsExecuted == 6)
            )
       historyDumbo <- loadHistory(schema)
@@ -249,8 +249,8 @@ trait DumboFlywaySpec extends ffstest.FTest {
     val schemas       = NonEmptyList.of("schema_1", "schema_2")
 
     for {
-      flywayRes <- flywayMigrate(schemas.head, path, schemas.tail).attempt
-      _          = assert(flywayRes.isLeft)
+      flywayRes     <- flywayMigrate(schemas.head, path, schemas.tail).attempt
+      _              = assert(flywayRes.isLeft)
       flywayHistory <- loadHistory(schemas.head).map(h =>
                          db match {
                            case Db.Postgres(_) => h
@@ -299,7 +299,7 @@ trait DumboFlywaySpec extends ffstest.FTest {
         dumboHistory  <- loadHistory(schema)
         _              = assert(flywayRes.isLeft)
         _              = assert(dumboRes.isLeft)
-        _ = List(
+        _              = List(
               flywayRes.swap.toOption.get,
               dumboRes.swap.toOption.get,
             ).map(_.getMessage().toLowerCase().linesIterator).foreach { lines =>

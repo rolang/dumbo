@@ -19,6 +19,7 @@ import dumbo.{ConnectionConfig, Dumbo, DumboWithResourcesPartiallyApplied, Histo
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.Session
+import skunk.Session.Credentials
 import skunk.implicits.*
 
 trait FTest extends CatsEffectSuite with FTestPlatform {
@@ -40,15 +41,16 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     password = None,
   )
 
-  def session(params: Map[String, String] = Map.empty): Resource[IO, Session[IO]] = Session
-    .single[IO](
-      host = connectionConfig.host,
-      port = connectionConfig.port,
-      user = connectionConfig.user,
-      database = connectionConfig.database,
-      password = connectionConfig.password,
-      parameters = Session.DefaultConnectionParameters ++ params,
-    )
+  def session(params: Map[String, String] = Map.empty): Resource[IO, Session[IO]] =
+    Session
+      .Builder[IO]
+      .withHost(connectionConfig.host)
+      .withPort(connectionConfig.port)
+      .withDatabase(connectionConfig.database)
+      .withCredentials(Credentials(user = connectionConfig.user, password = connectionConfig.password))
+      .withTypingStrategy(skunk.TypingStrategy.BuiltinsOnly)
+      .withConnectionParameters(Session.DefaultConnectionParameters ++ params)
+      .single
 
   def loadHistory(schema: String, tableName: String = "flyway_schema_history"): IO[List[HistoryEntry]] =
     session().use(_.execute(History(s"$schema.$tableName").loadAllQuery))

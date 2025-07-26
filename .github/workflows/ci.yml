@@ -27,7 +27,7 @@ jobs:
     name: Test
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-13, macos-14]
+        os: [ubuntu-24.04, macos-13, macos-14]
         scala: [3, 2.13]
         java: [temurin@21, temurin@17]
         project: [rootJVM, rootNative]
@@ -77,27 +77,23 @@ jobs:
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
 
-      - name: Start up Postgres
-        if: startsWith(matrix.os, 'ubuntu')
-        run: docker compose up -d
-
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
         run: |
-          /home/linuxbrew/.linuxbrew/bin/brew install llvm@17 s2n utf8proc
-          echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@17/bin" >> $GITHUB_ENV
+          /home/linuxbrew/.linuxbrew/bin/brew install llvm@20 s2n utf8proc
+          echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@20/bin" >> $GITHUB_ENV
 
       - name: Install native dependencies (macos-13)
         if: (matrix.project == 'rootNative') && matrix.os == 'macos-13'
         run: |
-          brew install llvm@17 s2n utf8proc
-          echo "LLVM_BIN=/usr/local/opt/llvm@17/bin" >> $GITHUB_ENV
+          brew install llvm@20 s2n utf8proc
+          echo "LLVM_BIN=/usr/local/opt/llvm@20/bin" >> $GITHUB_ENV
 
       - name: Install native dependencies (macos-14)
         if: (matrix.project == 'rootNative') && matrix.os == 'macos-14'
         run: |
-          brew install llvm@17 s2n utf8proc
-          echo "LLVM_BIN=/opt/homebrew/opt/llvm@17/bin" >> $GITHUB_ENV
+          brew install llvm@20 s2n utf8proc
+          echo "LLVM_BIN=/opt/homebrew/opt/llvm@20/bin" >> $GITHUB_ENV
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
@@ -107,23 +103,27 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll'
 
       - name: Check headers and formatting
-        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-24.04'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' headerCheckAll scalafmtCheckAll 'project /' scalafmtSbtCheck
 
       - name: nativeLink
         if: matrix.project == 'rootNative'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' Test/nativeLink
 
+      - name: Start up Postgres
+        if: startsWith(matrix.os, 'ubuntu')
+        run: docker compose up -d
+
       - name: Test
         if: startsWith(matrix.os, 'ubuntu')
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' test
 
       - name: Check binary compatibility
-        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-24.04'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' mimaReportBinaryIssues
 
       - name: Generate API documentation
-        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-24.04'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
       - name: CLI test
@@ -187,7 +187,7 @@ jobs:
     if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     strategy:
       matrix:
-        os: [ubuntu-22.04]
+        os: [ubuntu-24.04]
         java: [temurin@21]
     runs-on: ${{ matrix.os }}
     steps:
@@ -224,10 +224,6 @@ jobs:
       - name: sbt update
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
-
-      - name: Start up Postgres
-        if: startsWith(matrix.os, 'ubuntu')
-        run: docker compose up -d
 
       - name: Download target directories (3, rootJVM)
         uses: actions/download-artifact@v4
@@ -393,10 +389,6 @@ jobs:
       - name: sbt update
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
-
-      - name: Start up Postgres
-        if: startsWith(matrix.os, 'ubuntu')
-        run: docker compose up -d
 
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2

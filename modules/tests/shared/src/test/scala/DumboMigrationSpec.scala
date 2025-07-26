@@ -47,7 +47,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _     = assert(res.isLeft)
       _     = assert(res.left.exists(_.getMessage().contains("checksum mismatch")))
       vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_changed_checksum"))
-      _ = vRes match {
+      _     = vRes match {
             case Invalid(errs) => assert(errs.toList.exists(_.getMessage().contains("checksum mismatch")))
             case _             => fail("expected failure")
           }
@@ -61,14 +61,14 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _   <- dumboMigrate(schema, dumboWithResources("db/test_0"))
       res <- dumboMigrate(schema, dumboWithResources("db/test_0_desc_changed"), validateOnMigrate = true).attempt
       _    = assert(res.isLeft)
-      _ = assert(res.left.exists { err =>
+      _    = assert(res.left.exists { err =>
             val message = err.getMessage()
             message.contains("description mismatch") &&
               message.contains("test changed") &&
               message.contains("test base")
           })
       vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_desc_changed"))
-      _ = vRes match {
+      _     = vRes match {
             case Invalid(errs) =>
               assert(errs.exists { err =>
                 val message = err.getMessage()
@@ -91,7 +91,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _     = assert(res.left.exists(_.isInstanceOf[dumbo.exception.DumboValidationException]))
       _     = assert(res.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
       vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_missing_file"))
-      _ = vRes match {
+      _     = vRes match {
             case Invalid(errs) =>
               assert(errs.toList.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
             case _ => fail("expected failure")
@@ -130,7 +130,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
       dumboRes <- dumboMigrate(schema, withResources).attempt
       _         = assert(dumboRes.isLeft)
       errLines  = dumboRes.swap.toOption.get.getMessage().linesIterator
-      _ = db match {
+      _         = db match {
             case Db.Postgres(11) =>
               assert(errLines.exists(_.matches(".*ALTER TYPE .* cannot run inside a transaction block.*")))
             case Db.Postgres(_) =>
@@ -149,7 +149,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
       dumboRes <- dumboMigrate(schema, withResources).attempt
       _         = assert(dumboRes.isLeft)
       errLines  = dumboRes.swap.toOption.get.getMessage().linesIterator
-      _ = db match {
+      _         = db match {
             case Db.Postgres(11) =>
               assert(errLines.exists(_.matches(".*ALTER TYPE .* cannot run inside a transaction block.*")))
             case Db.Postgres(_) =>
@@ -173,9 +173,9 @@ trait DumboMigrationSpec extends ffstest.FTest {
   }
 
   dbTest("warn if schemas are not included in the search path for custom sessions") {
-    val withResources = dumboWithResources("db/test_search_path")
-    val schemas       = List("schema_1", "schema_2")
-    val testConsole   = new TestLogger
+    val withResources                      = dumboWithResources("db/test_search_path")
+    val schemas                            = List("schema_1", "schema_2")
+    val testConsole                        = new TestLogger
     def hasWarning(l: LogLevel, m: String) =
       l == LogLevel.Warn && m.contains("""The search_path will be set to 'schema_1, schema_2'""")
     def hasMissingSchemaWarning(l: LogLevel, m: String) =
@@ -279,7 +279,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
 
       for {
         _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(testLogger)
-        _ = db match {
+        _  = db match {
               case Db.Postgres(_) => assert(testLogger.logs.get().count(logMatch.tupled) >= 2)
               case Db.CockroachDb =>
                 assert(testLogger.logs.get().count { case (level, message) =>

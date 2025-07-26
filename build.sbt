@@ -1,7 +1,7 @@
 import scala.scalanative.build.*
 
 lazy val `scala-2.13` = "2.13.16"
-lazy val `scala-3`    = "3.3.5"
+lazy val `scala-3`    = "3.3.6"
 
 ThisBuild / tlBaseVersion      := "0.6"
 ThisBuild / startYear          := Some(2023)
@@ -10,7 +10,7 @@ ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
 
 ThisBuild / organization := "dev.rolang"
 ThisBuild / licenses     := Seq(License.MIT)
-ThisBuild / developers := List(
+ThisBuild / developers   := List(
   Developer(id = "rolang", name = "Roman Langolf", email = "rolang@pm.me", url = url("https://rolang.dev"))
 )
 ThisBuild / versionScheme := Some("early-semver")
@@ -26,7 +26,7 @@ ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix com
 lazy val macOsArm   = "macos-14"
 lazy val macOsIntel = "macos-13"
 lazy val macOses    = Seq(macOsIntel, macOsArm)
-ThisBuild / githubWorkflowOSes ++= Seq(macOsIntel, macOsArm)
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-24.04", macOsIntel, macOsArm)
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
   MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))
 )
@@ -34,7 +34,7 @@ ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.t
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
-lazy val llvmVersion  = "17"
+lazy val llvmVersion  = "20"
 lazy val brewFormulas = Set("s2n", "utf8proc")
 lazy val isTagCond    = "startsWith(github.ref, 'refs/tags/')"
 
@@ -61,13 +61,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= List(
     name = Some(s"Install native dependencies ($os)"),
   )
 }
-ThisBuild / githubWorkflowJobSetup ++= Seq(
-  WorkflowStep.Run(
-    commands = List("docker compose up -d"),
-    name = Some("Start up Postgres"),
-    cond = Some("startsWith(matrix.os, 'ubuntu')"),
-  )
-)
+
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
     List("Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll"),
@@ -80,14 +74,21 @@ ThisBuild / githubWorkflowBuild := {
 
 // override Test step to run on ubuntu only due to requirement of docker
 ThisBuild / githubWorkflowBuild := {
-  (ThisBuild / githubWorkflowBuild).value.map {
+  (ThisBuild / githubWorkflowBuild).value.flatMap {
     case s if s.name.contains("Test") =>
-      WorkflowStep.Sbt(
-        List("test"),
-        name = Some("Test"),
-        cond = Some("startsWith(matrix.os, 'ubuntu')"),
+      List(
+        WorkflowStep.Run(
+          commands = List("docker compose up -d"),
+          name = Some("Start up Postgres"),
+          cond = Some("startsWith(matrix.os, 'ubuntu')"),
+        ),
+        WorkflowStep.Sbt(
+          List("test"),
+          name = Some("Test"),
+          cond = Some("startsWith(matrix.os, 'ubuntu')"),
+        ),
       )
-    case s => s
+    case s => List(s)
   }
 }
 
@@ -207,7 +208,7 @@ addCommandAlias("check", "; +Test/copyResources; +scalafixAll --check; +scalafmt
 lazy val commonSettings = List(
   // Headers
   headerMappings := headerMappings.value + (HeaderFileType.scala -> HeaderCommentStyle.cppStyleLineComment),
-  headerLicense := Some(
+  headerLicense  := Some(
     HeaderLicense.Custom(
       """|Copyright (c) 2023 by Roman Langolf
          |This software is licensed under the MIT License (MIT).
@@ -237,9 +238,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway, example)
   .settings(commonSettings)
 
-lazy val skunkVersion = "1.0.0-M10"
-
-lazy val epollcatVersion = "0.1.6"
+lazy val skunkVersion = "1.0.0-M11"
 
 lazy val munitVersion = "1.0.0"
 
@@ -255,7 +254,7 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
     buildInfoPackage := "dumbo",
-    buildInfoKeys := {
+    buildInfoKeys    := {
       val isNative = crossProjectPlatform.value.identifier == "native"
       Seq[BuildInfoKey](
         version,
@@ -281,8 +280,7 @@ lazy val cli = crossProject(NativePlatform)
   .settings(commonSettings)
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
-    nativeBrewFormulas ++= brewFormulas,
+    nativeBrewFormulas ++= brewFormulas
   )
 
 lazy val cliNative      = cli.native
@@ -290,7 +288,7 @@ lazy val buildCliBinary = taskKey[File]("")
 buildCliBinary := {
   def normalise(s: String) = s.toLowerCase.replaceAll("[^a-z0-9]+", "")
   val props                = sys.props.toMap
-  val os = normalise(props.getOrElse("os.name", "")) match {
+  val os                   = normalise(props.getOrElse("os.name", "")) match {
     case p if p.startsWith("linux")                         => "linux"
     case p if p.startsWith("windows")                       => "windows"
     case p if p.startsWith("osx") || p.startsWith("macosx") => "macosx"
@@ -342,7 +340,6 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   )
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    libraryDependencies += "com.armanbilge" %%% "epollcat" % epollcatVersion,
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     nativeConfig ~= {
@@ -351,8 +348,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   )
 
 lazy val flywayVersion     = "11.0.0"
-lazy val postgresqlVersion = "42.7.5"
-lazy val testsFlyway = project
+lazy val postgresqlVersion = "42.7.7"
+lazy val testsFlyway       = project
   .in(file("modules/tests-flyway"))
   .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
   .dependsOn(core.jvm, tests.jvm % "compile->compile;test->test")

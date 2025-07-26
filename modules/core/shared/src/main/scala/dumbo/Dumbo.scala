@@ -13,7 +13,7 @@ import cats.data.Validated.{Invalid, Valid}
 import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.effect.kernel.Clock
 import cats.effect.std.Console
-import cats.effect.{Async, Resource, Sync, Temporal}
+import cats.effect.{Async, LiftIO, Resource, Sync, Temporal}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
 import dumbo.internal.{ResourceReader, Statements}
@@ -23,10 +23,11 @@ import fs2.io.file.*
 import fs2.io.net.Network
 import org.typelevel.otel4s.trace.Tracer
 import skunk.*
+import skunk.Session.Credentials
 import skunk.codec.all.*
 import skunk.data.Completion
 import skunk.implicits.*
-import skunk.util.{Origin, Typer}
+import skunk.util.Origin
 
 final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) {
   def apply(
@@ -66,8 +67,8 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit A: Async[F], L: Logger[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
-    implicit val network: Network[F] = Network.forAsync(A)
+  )(implicit A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
+    implicit val network: Network[F] = Network.forLiftIO[F]
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
 
     withMigrationStateLogAfterBySession(logMigrationStateAfter)(
@@ -146,20 +147,20 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     val searchPath = Dumbo.toSearchPath(defaultSchema, schemas)
     val params     = Session.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
 
-    Session.single[F](
-      host = connection.host,
-      port = connection.port,
-      user = connection.user,
-      database = connection.database,
-      password = connection.password,
-      strategy = Typer.Strategy.BuiltinsOnly,
-      ssl = connection.ssl match {
+    Session
+      .Builder[F]
+      .withHost(connection.host)
+      .withPort(connection.port)
+      .withDatabase(connection.database)
+      .withCredentials(Credentials(user = connection.user, password = connection.password))
+      .withTypingStrategy(skunk.TypingStrategy.BuiltinsOnly)
+      .withSSL(connection.ssl match {
         case ConnectionConfig.SSL.None    => SSL.None
         case ConnectionConfig.SSL.Trusted => SSL.Trusted
         case ConnectionConfig.SSL.System  => SSL.System
-      },
-      parameters = params,
-    )
+      })
+      .withConnectionParameters(params)
+      .single
   }
 }
 
@@ -209,9 +210,9 @@ class Dumbo[F[_]: Sync: Logger](
                          statements
                            .map(statementSql =>
                              new Statement[Void] {
-                               override val sql: String            = statementSql
-                               override val origin: Origin         = Origin(source.path.toString, line = 0)
-                               override val encoder: Encoder[Void] = Void.codec
+                               override val sql: String                  = statementSql
+                               override val origin: Origin               = Origin(source.path.toString, line = 0)
+                               override val encoder: Encoder[Void]       = Void.codec
                                override val cacheKey: Statement.CacheKey =
                                  Statement.CacheKey(statementSql, encoder.types, Nil)
                              }
@@ -236,7 +237,7 @@ class Dumbo[F[_]: Sync: Logger](
         .execute(dumboHistory.loadAllQuery)
         .map(history => validate(history, resources))
         .flatMap {
-          case Valid(_) => ().pure[F]
+          case Valid(_)   => ().pure[F]
           case Invalid(e) =>
             new DumboValidationException(s"Error on validation:\n${e.toList.map(_.getMessage).mkString("\n")}")
               .raiseError[F, Unit]
@@ -251,7 +252,7 @@ class Dumbo[F[_]: Sync: Logger](
     resources: ResourceFiles
   ): F[MigrateToNextResult] =
     resources match {
-      case ResourceFiles(Nil, Nil) => none.pure[F]
+      case ResourceFiles(Nil, Nil)               => none.pure[F]
       case ResourceFiles(versioned, repeatables) =>
         (for {
           txn <- session.transaction
@@ -262,7 +263,7 @@ class Dumbo[F[_]: Sync: Logger](
                  else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
             res <- processVersioned(versioned, session, fs).flatMap {
                      case Some((newEntry, files)) => (newEntry, ResourceFiles(files, repeatables)).some.pure[F]
-                     case _ =>
+                     case _                       =>
                        processRepeatables(repeatables, session, fs).flatMap[MigrateToNextResult] {
                          case Some((newEntry, files)) =>
                            (newEntry, ResourceFiles(Nil, files)).some.pure[F]
@@ -282,7 +283,7 @@ class Dumbo[F[_]: Sync: Logger](
     for {
       latestInstalled <- session.option(dumboHistory.latestVersionedInstalled)
       latestInstalledV = latestInstalled.map(l => (l.resourceVersion, l.success))
-      result <- versioned.dropWhile { case (v, _) =>
+      result          <- versioned.dropWhile { case (v, _) =>
                   latestInstalledV match {
                     // drop versions applied successfully
                     // retry the version which was not applied successfully
@@ -312,7 +313,7 @@ class Dumbo[F[_]: Sync: Logger](
   else
     for {
       latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled).map(_.toMap)
-      res <- repeatables.filter { case (_, f) =>
+      res               <- repeatables.filter { case (_, f) =>
                latestRepeatables.get(f.scriptDescription) match {
                  case Some(checksum) => checksum != f.checksum
                  case _              => true
@@ -399,14 +400,14 @@ class Dumbo[F[_]: Sync: Logger](
            case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
          }
     tableLockSupport <- hasTableLockSupport(session, historyTable)
-    _ <- schemaRes match {
+    _                <- schemaRes match {
            case e @ (_ :: _) => session.execute(dumboHistory.insertSchemaEntry)(e.mkString("\"", "\",\"", "\"")).void
            case _            => ().pure[F]
          }
 
     migrationResult <- for {
                          resources <- listMigrationFiles(resReader).flatMap {
-                                        case Valid(f) => f.pure[F]
+                                        case Valid(f)      => f.pure[F]
                                         case Invalid(errs) =>
                                           new DumboValidationException(
                                             s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
@@ -416,7 +417,7 @@ class Dumbo[F[_]: Sync: Logger](
                            val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
                            Logger[F].logInfo(s"Found ${resources.length} migration files$inLocation")
                          }
-                         _ <- if (validateOnMigrate) validationGuard(session, resources) else ().pure[F]
+                         _               <- if (validateOnMigrate) validationGuard(session, resources) else ().pure[F]
                          migrationResult <-
                            Stream
                              .unfoldEval(resources)(migrateToNext(session, resReader, tableLockSupport))
@@ -537,8 +538,8 @@ object Dumbo extends internal.DumboPlatform {
       val duplicates    = files.groupBy(_.version).filter(_._2.length > 1).toList
 
       (duplicates, errs.map(new DumboValidationException(_))) match {
-        case (Nil, Nil)     => files.sorted.validNec[DumboValidationException]
-        case (Nil, x :: xs) => NonEmptyChain(x, xs*).invalid[List[ResourceFile]]
+        case (Nil, Nil)         => files.sorted.validNec[DumboValidationException]
+        case (Nil, x :: xs)     => NonEmptyChain(x, xs*).invalid[List[ResourceFile]]
         case (diff, exceptions) =>
           NonEmptyChain(
             new DumboValidationException(
@@ -586,7 +587,7 @@ object Dumbo extends internal.DumboPlatform {
   private[dumbo] def checksum[F[_]: Sync](p: ResourceFilePath, fs: ResourceReader[F]): F[Int] =
     for {
       crc32 <- (new CRC32()).pure[F]
-      _ <- fs.readUtf8Lines(p)
+      _     <- fs.readUtf8Lines(p)
              .map { line =>
                crc32.update(line.getBytes(StandardCharsets.UTF_8))
              }
