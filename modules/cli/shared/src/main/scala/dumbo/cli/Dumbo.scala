@@ -135,7 +135,7 @@ object Dumbo extends IOApp {
           case Command.Help :: Nil     => printHelp().as(ExitCode.Success)
           case Command.Migrate :: Nil  => runMigration(argsResult.configs)
           case Command.Validate :: Nil => runValidation(argsResult.configs)
-          case Command.Version :: Nil =>
+          case Command.Version :: Nil  =>
             Console[IO]
               .println(
                 s"""|Dumbo

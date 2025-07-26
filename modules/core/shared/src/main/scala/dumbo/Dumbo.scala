@@ -98,7 +98,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
         .eval(sessionResource.use(s => Dumbo.hasTableLockSupport(s, s"${defaultSchema}.${schemaHistoryTable}")))
         .flatMap {
           case false => Resource.eval(L.logWarn("Progress monitor is not supported for current database"))
-          case true =>
+          case true  =>
             Async[F].background {
               Stream
                 .evalSeq(
@@ -121,7 +121,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
                     changedAgo   = now.getEpochSecond() - changed.toEpochSecond()
                     queryLogSize = 150
                     queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
-                    _ <-
+                    _           <-
                       L.logInfo(
                         s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
                           s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
@@ -427,7 +427,7 @@ class Dumbo[F[_]: Sync: Logger](
                        } yield migrationResult
 
     _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse) match {
-           case Nil => Logger[F].logInfo(s"Schema ${defaultSchema} is up to date. No migration necessary")
+           case Nil     => Logger[F].logInfo(s"Schema ${defaultSchema} is up to date. No migration necessary")
            case history =>
              val verLog = history.collectFirst { case HistoryEntry(_, Some(v), _, _, _, _, _, _, _, _) => v }
                .map(v => s", now at version $v")
