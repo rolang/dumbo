@@ -342,7 +342,7 @@ object Db {
 }
 
 class DumboFlywaySpecPostgresLatest extends DumboFlywaySpec {
-  override val db: Db            = Db.Postgres(16)
+  override val db: Db            = Db.Postgres(17)
   override val postgresPort: Int = 5433
 }
 
