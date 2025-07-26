@@ -236,7 +236,7 @@ lazy val commonSettings = List(
 
 lazy val root = tlCrossRootProject
   .settings(name := "dumbo")
-  .aggregate(core, tests, testsFlyway, example)
+  .aggregate(core, tests, testsFlyway)
   .settings(commonSettings)
 
 lazy val skunkVersion = "1.0.0-M11"
