@@ -27,7 +27,7 @@ ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix com
 lazy val macOsArm   = "macos-14"
 lazy val macOsIntel = "macos-13"
 lazy val macOses    = Seq(macOsIntel, macOsArm)
-ThisBuild / githubWorkflowOSes := Seq("ubuntu-24.04", macOsIntel, macOsArm)
+ThisBuild / githubWorkflowOSes ++= Seq(macOsIntel, macOsArm)
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
   MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))
 )
