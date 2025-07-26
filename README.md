@@ -135,7 +135,7 @@ The migration can be executed like:
 ```scala
 //> using scala 3.7.1
 //> using resourceDir ../resources
-//> using dep "dev.rolang::dumbo::0.6-ddb8ad6-20250726T042745Z-SNAPSHOT"
+//> using dep "dev.rolang::dumbo::0.6.0"
 
 import cats.effect.{IO, IOApp}
 import dumbo.logging.Implicits.console
