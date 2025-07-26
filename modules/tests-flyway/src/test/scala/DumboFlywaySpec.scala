@@ -8,6 +8,7 @@ import scala.io.AnsiColor
 
 import cats.data.NonEmptyList
 import cats.effect.IO
+import dumbo.logging.Implicits.consolePrettyWithTimestamp
 import fs2.io.file.Path
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
@@ -341,7 +342,7 @@ object Db {
 }
 
 class DumboFlywaySpecPostgresLatest extends DumboFlywaySpec {
-  override val db: Db            = Db.Postgres(16)
+  override val db: Db            = Db.Postgres(17)
   override val postgresPort: Int = 5433
 }
 

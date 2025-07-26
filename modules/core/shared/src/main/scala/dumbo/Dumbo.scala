@@ -17,6 +17,7 @@ import cats.effect.{Async, LiftIO, Resource, Sync, Temporal}
 import cats.implicits.*
 import dumbo.exception.DumboValidationException
 import dumbo.internal.{ResourceReader, Statements}
+import dumbo.logging.Logger
 import fs2.Stream
 import fs2.io.file.*
 import fs2.io.net.Network
@@ -35,7 +36,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit S: Sync[F], T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
+  )(implicit S: Sync[F], T: Temporal[F], L: Logger[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
     withSession(
       sessionResource = toSessionResource(connection, defaultSchema, schemas),
       defaultSchema = defaultSchema,
@@ -50,7 +51,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit S: Sync[F], C: Console[F]): Dumbo[F] =
+  )(implicit S: Sync[F], L: Logger[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
       sessionResource = sessionResource,
@@ -66,7 +67,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit A: Async[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
+  )(implicit A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
     implicit val network: Network[F] = Network.forLiftIO[F]
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
 
@@ -85,7 +86,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
-  )(implicit A: Async[F], C: Console[F]): Dumbo[F] =
+  )(implicit A: Async[F], L: Logger[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
       sessionResource = sessionResource,
@@ -96,7 +97,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       progressMonitor = Resource
         .eval(sessionResource.use(s => Dumbo.hasTableLockSupport(s, s"${defaultSchema}.${schemaHistoryTable}")))
         .flatMap {
-          case false => Resource.eval(Console[F].println("Progress monitor is not supported for current database"))
+          case false => Resource.eval(L.logWarn("Progress monitor is not supported for current database"))
           case true  =>
             Async[F].background {
               Stream
@@ -121,7 +122,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
                     queryLogSize = 150
                     queryLog     = query.take(queryLogSize) + (if (query.size > queryLogSize) "..." else "")
                     _           <-
-                      Console[F].println(
+                      L.logInfo(
                         s"Awaiting query with pid: $pid started: ${startedAgo}s ago (state: $state / last changed: ${changedAgo}s ago, " +
                           s"eventType: ${eventType.getOrElse("")}, event: ${event.getOrElse("")}):\n${queryLog}"
                       )
@@ -163,7 +164,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
   }
 }
 
-class Dumbo[F[_]: Sync: Console](
+class Dumbo[F[_]: Sync: Logger](
   private[dumbo] val resReader: ResourceReader[F],
   sessionResource: Resource[F, Session[F]],
   defaultSchema: String,
@@ -182,13 +183,13 @@ class Dumbo[F[_]: Sync: Console](
 
   private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] = {
     val toVersion = source.versionText match {
-      case Some(v) => s"to version $v - ${source.scriptDescription}"
-      case _       => s"with repeatable migration ${source.scriptDescription}"
+      case Some(v) => s"to version $v - \"${source.scriptDescription}\""
+      case _       => s"with repeatable migration \"${source.scriptDescription}\""
     }
 
     for {
       _ <-
-        Console[F].println(
+        Logger[F].logInfo(
           s"""Migrating schema "$defaultSchema" $toVersion ${
               if (!source.executeInTransaction) " [non-transactional]" else ""
             }"""
@@ -218,7 +219,7 @@ class Dumbo[F[_]: Sync: Console](
                            )
                            .traverse_(session.executeDiscard(_))
                        }
-      _ <- Console[F].println(s"Migration $toVersion completed in ${duration.toMillis}ms")
+      _ <- Logger[F].logInfo(s"Migration $toVersion completed in ${duration.toMillis}ms")
     } yield HistoryEntry.New(
       version = source.versionText,
       description = source.scriptDescription,
@@ -360,17 +361,17 @@ class Dumbo[F[_]: Sync: Console](
         if (schemas.forall(s => spSchemas.indexOf(s) > defaultIdx)) {
           none[String].pure[F]
         } else {
-          Console[F]
-            .println(
-              s"""|WARNING: Default schema '$defaultSchema' is not in the right position of the search path '$sps'.
+          Logger[F]
+            .logWarn(
+              s"""|Default schema '$defaultSchema' is not in the right position of the search path '$sps'.
                   |The search_path will be set to '${expectedSearchPath}'. Consider adding it to session parameters instead.""".stripMargin
             )
             .as(Some(expectedSearchPath))
         }
       case missing =>
-        Console[F]
-          .println(
-            s"""|WARNING: Following schemas are not included in the search path '$sps': ${missing.mkString(", ")}.
+        Logger[F]
+          .logWarn(
+            s"""|Following schemas are not included in the search path '$sps': ${missing.mkString(", ")}.
                 |The search_path will be set to '$expectedSearchPath'. Consider adding it to session parameters instead.""".stripMargin
           )
           .as(Some(expectedSearchPath))
@@ -386,7 +387,7 @@ class Dumbo[F[_]: Sync: Console](
            }
          }
     dbVersion <- session.unique(sql"SELECT version()".query(text))
-    _         <- Console[F].println(s"Starting migration on $dbVersion")
+    _         <- Logger[F].logInfo(s"Starting migration on $dbVersion")
     schemaRes <-
       allSchemas.flatTraverse(schema =>
         session.execute(initSchemaCmd(schema)).attempt.map {
@@ -414,7 +415,7 @@ class Dumbo[F[_]: Sync: Console](
                                       }.map(ResourceFiles.fromResources)
                          _ <- {
                            val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
-                           Console[F].println(s"Found ${resources.length} migration files$inLocation")
+                           Logger[F].logInfo(s"Found ${resources.length} migration files$inLocation")
                          }
                          _               <- if (validateOnMigrate) validationGuard(session, resources) else ().pure[F]
                          migrationResult <-
@@ -426,7 +427,7 @@ class Dumbo[F[_]: Sync: Console](
                        } yield migrationResult
 
     _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse) match {
-           case Nil     => Console[F].println(s"Schema ${defaultSchema} is up to date. No migration necessary")
+           case Nil     => Logger[F].logInfo(s"Schema ${defaultSchema} is up to date. No migration necessary")
            case history =>
              val verLog = history.collectFirst { case HistoryEntry(_, Some(v), _, _, _, _, _, _, _, _) => v }
                .map(v => s", now at version $v")
@@ -435,8 +436,8 @@ class Dumbo[F[_]: Sync: Console](
              val execMs          = history.foldLeft(0L)(_ + _.executionTimeMs)
              val execDurationLog = s"(execution time ${formatDuration(execMs)})"
 
-             Console[F]
-               .println(
+             Logger[F]
+               .logInfo(
                  s"Successfully applied ${migrationResult.migrations.length} migrations$verLog $execDurationLog"
                )
          }

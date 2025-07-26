@@ -16,7 +16,7 @@ You might also be able to simply switch from Flyway to Dumbo without any changes
 
 ### Versioned Migrations
 
-As described in _[Flyway Versioned Migrations docs](https://documentation.red-gate.com/fd/migrations-184127470.html#Migrations-VersionedMigrations)_:
+As described in _[Flyway Versioned Migrations docs](https://documentation.red-gate.com/flyway/flyway-concepts/migrations/versioned-migrations)_:
 
 The most common type of migration is a versioned migration. Each versioned migration has a version, a description and a checksum. The version must be unique. The description is purely informative for you to be able to remember what each migration does. The checksum is there to detect accidental changes. Versioned migrations are applied in order exactly once.
 
@@ -36,7 +36,7 @@ Each versioned migration must be assigned a unique version.
 
 ### Repeatable Migrations
 
-As described in _[Flyway Repeatable Migrations docs](https://documentation.red-gate.com/fd/migrations-184127470.html#Migrations-RepeatableMigrations)_:
+As described in _[Flyway Repeatable Migrations docs](https://documentation.red-gate.com/flyway/flyway-concepts/migrations/repeatable-migrations)_:
 
 Repeatable migrations have a description and a checksum, but no version. Instead of being run just once, they are (re-)applied every time their checksum changes.
 
@@ -54,7 +54,7 @@ It is your responsibility to ensure the same repeatable migration can be applied
 
 ### Script Config Files
 
-Similar to [Flyway script config files](https://documentation.red-gate.com/flyway/flyway-cli-and-api/configuration/script-config-files) it's possible to configure migrations on a per-script basis.
+Similar to [Flyway script config files](https://documentation.red-gate.com/flyway/reference/script-configuration) it's possible to configure migrations on a per-script basis.
 
 This is achieved by creating a script configuration file in the same folder as the migration.  
 The script configuration file name must match the migration file name, with the `.conf` suffix added.
@@ -99,7 +99,7 @@ For usage via command line see [command-line](#command-line) section.
 In a sbt project dumbo can be added like:
 
 ```scala
-libraryDependencies += "dev.rolang" %% "dumbo" % "0.4.x"
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.6.x"
 ```
 
 _For compatibility with skunk `0.6.x` / natchez / Scala 2.12.x use release series `0.0.x`_:
@@ -133,15 +133,16 @@ example
 The migration can be executed like:
 
 ```scala
-//> using scala 3.3.3
+//> using scala 3.7.1
 //> using resourceDir ../resources
-//> using dep "dev.rolang::dumbo::0.4.0"
+//> using dep "dev.rolang::dumbo::0.6.0"
 
 import cats.effect.{IO, IOApp}
+import dumbo.logging.Implicits.console
 import dumbo.{ConnectionConfig, Dumbo}
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
-object ExampleApp extends IOApp.Simple {
+object ExampleApp extends IOApp.Simple:
   def run = Dumbo
     .withResourcesIn[IO]("db/migration")
     .apply(
@@ -155,13 +156,11 @@ object ExampleApp extends IOApp.Simple {
       )
     )
     .runMigration
-    .flatMap { result =>
+    .flatMap: result =>
       IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
-    }
-}
 ```
 
-To run the example, start a Postgres server via docker compose from provided docker-compose.yaml:
+To run the example, start a Postgres server via docker:
 
 ```shell
 docker compose up pg_latest_1
@@ -175,7 +174,7 @@ scala-cli modules/example/src/main/scala/ExampleApp.scala
 or via [sbt](https://www.scala-sbt.org):
 
 ```shell
-sbt 'example/run'
+sbt 'example/runMain ExampleApp'
 ```
 
 ## Configurations
@@ -269,6 +268,22 @@ dumboWithResouces.withSession(
   )
 )
 ```
+
+### Logging
+Dumbo requires a `dumbo.logging.Logger` instance.  
+To use a logger based on `cats.effect.std.Console` that is required by `skunk` add the import:
+```scala
+import dumbo.logging.Implicits.console
+```
+
+Or provide a custom logger like:
+```scala
+given dumbo.logging.Logger[F] =
+  case (dumbo.logging.LogLevel.Info, message) => ???
+  case (dumbo.logging.LogLevel.Warn, message) => ???
+```
+
+For an example based on [log4cats](https://github.com/typelevel/log4cats) with [Slf4J](https://slf4j.org/) see [ExampleLog4Cats.scala](modules/example/src/main/scala/ExampleLog4Cats.scala).
 
 ## Command-line
 
