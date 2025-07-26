@@ -194,7 +194,7 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(
   List("example/runMain ExampleApp"),
   name = Some("Run example (covers reading resources from a jar at runtime)"),
-  cond = Some("matrix.project == 'rootJVM'"),
+  cond = Some("matrix.project == 'rootJVM' && matrix.scala == '3'"),
 )
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Run(

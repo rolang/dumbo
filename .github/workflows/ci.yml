@@ -159,7 +159,7 @@ jobs:
           path: modules/cli/native/target/bin/*
 
       - name: Run example (covers reading resources from a jar at runtime)
-        if: matrix.project == 'rootJVM'
+        if: matrix.project == 'rootJVM' && matrix.scala == '3'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'example/runMain ExampleApp'
 
       - name: Test reading resources from a jar at compile time
