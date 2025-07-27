@@ -232,6 +232,7 @@ lazy val commonSettings = List(
     else
       Seq("-Xsource:3")
   },
+  gpgOptions ++= Seq("--batch"),
 )
 
 lazy val root = tlCrossRootProject
