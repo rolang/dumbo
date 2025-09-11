@@ -1,4 +1,4 @@
-//> using scala 3.7.1
+//> using scala 3.7.3
 //> using resourceDir ../resources
 //> using dep "dev.rolang::dumbo::0.6.0"
 
