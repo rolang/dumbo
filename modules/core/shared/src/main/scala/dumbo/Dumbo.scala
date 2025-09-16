@@ -28,6 +28,7 @@ import skunk.codec.all.*
 import skunk.data.Completion
 import skunk.implicits.*
 import skunk.util.Origin
+import org.typelevel.otel4s.metrics.Meter
 
 final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) {
   def apply(
@@ -37,7 +38,15 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
     cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
-  )(implicit S: Sync[F], T: Temporal[F], L: Logger[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
+  )(implicit
+    S: Sync[F],
+    T: Temporal[F],
+    L: Logger[F],
+    C: Console[F],
+    TRC: Tracer[F],
+    M: Meter[F],
+    N: Network[F],
+  ): Dumbo[F] =
     withSession(
       sessionResource = toSessionResource(connection, defaultSchema, schemas),
       defaultSchema = defaultSchema,
@@ -72,7 +81,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
     cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
-  )(implicit A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
+  )(implicit A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F], M: Meter[F]): Dumbo[F] = {
     implicit val network: Network[F] = Network.forLiftIO[F]
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
 
@@ -154,7 +163,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     connection: ConnectionConfig,
     defaultSchema: String,
     schemas: Set[String],
-  )(implicit T: Temporal[F], C: Console[F], TRC: Tracer[F], N: Network[F]) = {
+  )(implicit T: Temporal[F], C: Console[F], TRC: Tracer[F], M: Meter[F], N: Network[F]) = {
     val searchPath = Dumbo.toSearchPath(defaultSchema, schemas)
     val params     = Session.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
 
