@@ -195,17 +195,17 @@ trait DumboMigrationSpec extends ffstest.FTest {
       // warn about missing schemas in the search_path
       dumboRes <- migrateBySession()
       _         = assert(dumboRes.isRight)
-      _         = assert(testConsole.logs.get().exists(hasMissingSchemaWarning.tupled))
+      _         = assert(testConsole.logs.get().exists(t => hasMissingSchemaWarning(t._1, t._2)))
       // warn about wrong order in the search_path
       _         <- { testConsole.flush(); dropSchemas }
       dumboResB <- migrateBySession(Map("search_path" -> "schema_2,schema_1"))
       _          = assert(dumboResB.isRight)
-      _          = assert(testConsole.logs.get().exists(hasWrongOrderWarning.tupled))
+      _          = assert(testConsole.logs.get().exists(t => hasWrongOrderWarning(t._1, t._2)))
       // succeed without warning if search_path is set as expected
       _         <- { testConsole.flush(); dropSchemas }
       dumboResC <- migrateBySession(Map("search_path" -> "schema_1,schema_2"))
       _          = assert(dumboResC.isRight)
-      _          = assert(!testConsole.logs.get().exists(hasWarning.tupled))
+      _          = assert(!testConsole.logs.get().exists(t => hasWarning(t._1, t._2)))
     } yield ()
   }
 
@@ -270,7 +270,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
       val testLogger = new TestLogger()
       for {
         _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 5.second)(testLogger)
-        _  = assert(testLogger.logs.get().count(logMatch.tupled) == 0)
+        _  = assert(testLogger.logs.get().count(t => logMatch(t._1, t._2)) == 0)
       } yield ()
     }
 
@@ -280,7 +280,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
       for {
         _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(testLogger)
         _  = db match {
-              case Db.Postgres(_) => assert(testLogger.logs.get().count(logMatch.tupled) >= 2)
+              case Db.Postgres(_) => assert(testLogger.logs.get().count(t => logMatch(t._1, t._2)) >= 2)
               case Db.CockroachDb =>
                 assert(testLogger.logs.get().count { case (level, message) =>
                   level == LogLevel.Warn && message.startsWith("Progress monitor is not supported")
