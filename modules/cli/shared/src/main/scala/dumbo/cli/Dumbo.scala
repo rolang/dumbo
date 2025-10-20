@@ -9,7 +9,6 @@ import cats.effect.std.Console
 import cats.effect.{ExitCode, IO, IOApp}
 import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
-import dumbo.exception.DumboValidationException
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
 
