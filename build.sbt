@@ -239,7 +239,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway)
   .settings(commonSettings)
 
-lazy val skunkVersion = "1.0.0-M11"
+lazy val skunkVersion = "1.0.0-M12"
 
 lazy val munitVersion = "1.0.0"
 
