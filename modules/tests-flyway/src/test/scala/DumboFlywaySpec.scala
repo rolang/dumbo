@@ -192,17 +192,17 @@ trait DumboFlywaySpec extends ffstest.FTest {
     for {
       _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable")).map(_.migrations.length), 3)
       _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable")).map(_.migrationsExecuted), 3)
-      _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
+      _ <- loadHistory(sD).product(loadHistory(sF)).map(t => assertEqualSQLHistory(t._1, t._2))
 
       // history unchanged on re-run
       _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable")).map(_.migrations.length), 0)
       _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable")).map(_.migrationsExecuted), 0)
-      _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
+      _ <- loadHistory(sD).product(loadHistory(sF)).map(t => assertEqualSQLHistory(t._1, t._2))
 
       // history updated on modified repeatable migration
       _ <- assertIO(dumboMigrate(sD, dumboWithResources("db/test_repeatable_modified")).map(_.migrations.length), 2)
       _ <- assertIO(flywayMigrate(sF, Path("db/test_repeatable_modified")).map(_.migrationsExecuted), 2)
-      _ <- loadHistory(sD).product(loadHistory(sF)).map(assertEqualSQLHistory.tupled)
+      _ <- loadHistory(sD).product(loadHistory(sF)).map(t => assertEqualSQLHistory(t._1, t._2))
     } yield ()
   }
 
