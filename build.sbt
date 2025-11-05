@@ -18,8 +18,6 @@ ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / description   := "Simple database migration tool for Scala + Postgres"
 ThisBuild / homepage      := Some(url("https://github.com/rolang/dumbo"))
 
-ThisBuild / scalafmt          := true
-ThisBuild / scalafmtSbtCheck  := true
 ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
@@ -239,7 +237,7 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway)
   .settings(commonSettings)
 
-lazy val skunkVersion = "1.0.0-M11"
+lazy val skunkVersion = "1.0.0-M12"
 
 lazy val munitVersion = "1.0.0"
 
