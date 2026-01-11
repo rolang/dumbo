@@ -22,14 +22,13 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
-lazy val macOsArm   = "macos-14"
-lazy val macOsIntel = "macos-13"
-lazy val macOses    = Seq(macOsIntel, macOsArm)
-ThisBuild / githubWorkflowOSes ++= Seq(macOsIntel, macOsArm)
+lazy val macOsArm = "macos-latest"
+lazy val macOses  = Seq(macOsArm)
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", macOsArm)
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
   MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))
 )
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"), JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("25"), JavaSpec.temurin("17"))
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
@@ -48,8 +47,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   )
 )
 ThisBuild / githubWorkflowBuildPreamble ++= List(
-  macOsIntel -> "/usr/local/opt",
-  macOsArm   -> "/opt/homebrew/opt",
+  macOsArm -> "/opt/homebrew/opt"
 ).map { case (os, llvmBase) =>
   WorkflowStep.Run(
     commands = List(
