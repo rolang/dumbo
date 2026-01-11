@@ -27,41 +27,39 @@ jobs:
     name: Test
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-13, macos-14]
+        os: [ubuntu-latest, macos-latest]
         scala: [3, 2.13]
-        java: [temurin@21, temurin@17]
+        java: [temurin@25, temurin@17]
         project: [rootJVM, rootNative]
         exclude:
           - scala: 2.13
             java: temurin@17
           - project: rootNative
             java: temurin@17
-          - os: macos-13
-            project: rootJVM
-          - os: macos-14
+          - os: macos-latest
             project: rootJVM
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - name: Checkout current branch (full)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup sbt
         uses: sbt/setup-sbt@v1
 
-      - name: Setup Java (temurin@21)
-        id: setup-java-temurin-21
-        if: matrix.java == 'temurin@21'
+      - name: Setup Java (temurin@25)
+        id: setup-java-temurin-25
+        if: matrix.java == 'temurin@25'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 25
           cache: sbt
 
       - name: sbt update
-        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
+        if: matrix.java == 'temurin@25' && steps.setup-java-temurin-25.outputs.cache-hit == 'false'
         run: sbt +update
 
       - name: Setup Java (temurin@17)
@@ -83,14 +81,8 @@ jobs:
           /home/linuxbrew/.linuxbrew/bin/brew install llvm@20 s2n utf8proc
           echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@20/bin" >> $GITHUB_ENV
 
-      - name: Install native dependencies (macos-13)
-        if: (matrix.project == 'rootNative') && matrix.os == 'macos-13'
-        run: |
-          brew install llvm@20 s2n utf8proc
-          echo "LLVM_BIN=/usr/local/opt/llvm@20/bin" >> $GITHUB_ENV
-
-      - name: Install native dependencies (macos-14)
-        if: (matrix.project == 'rootNative') && matrix.os == 'macos-14'
+      - name: Install native dependencies (macos-latest)
+        if: (matrix.project == 'rootNative') && matrix.os == 'macos-latest'
         run: |
           brew install llvm@20 s2n utf8proc
           echo "LLVM_BIN=/opt/homebrew/opt/llvm@20/bin" >> $GITHUB_ENV
@@ -103,7 +95,7 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' 'Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll'
 
       - name: Check headers and formatting
-        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@25' && matrix.os == 'ubuntu-latest'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' headerCheckAll scalafmtCheckAll 'project /' scalafmtSbtCheck
 
       - name: nativeLink
@@ -119,11 +111,11 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' test
 
       - name: Check binary compatibility
-        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@25' && matrix.os == 'ubuntu-latest'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' mimaReportBinaryIssues
 
       - name: Generate API documentation
-        if: matrix.java == 'temurin@21' && matrix.os == 'ubuntu-22.04'
+        if: matrix.java == 'temurin@25' && matrix.os == 'ubuntu-latest'
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
       - name: CLI test
@@ -187,29 +179,29 @@ jobs:
     if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     strategy:
       matrix:
-        os: [ubuntu-22.04]
-        java: [temurin@21]
+        os: [ubuntu-latest]
+        java: [temurin@25]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout current branch (full)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup sbt
         uses: sbt/setup-sbt@v1
 
-      - name: Setup Java (temurin@21)
-        id: setup-java-temurin-21
-        if: matrix.java == 'temurin@21'
+      - name: Setup Java (temurin@25)
+        id: setup-java-temurin-25
+        if: matrix.java == 'temurin@25'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 25
           cache: sbt
 
       - name: sbt update
-        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
+        if: matrix.java == 'temurin@25' && steps.setup-java-temurin-25.outputs.cache-hit == 'false'
         run: sbt +update
 
       - name: Setup Java (temurin@17)
@@ -322,7 +314,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download command line linux build
         uses: actions/download-artifact@v4
@@ -353,28 +345,28 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04]
-        java: [temurin@21]
+        java: [temurin@25]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout current branch (full)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup sbt
         uses: sbt/setup-sbt@v1
 
-      - name: Setup Java (temurin@21)
-        id: setup-java-temurin-21
-        if: matrix.java == 'temurin@21'
+      - name: Setup Java (temurin@25)
+        id: setup-java-temurin-25
+        if: matrix.java == 'temurin@25'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 25
           cache: sbt
 
       - name: sbt update
-        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
+        if: matrix.java == 'temurin@25' && steps.setup-java-temurin-25.outputs.cache-hit == 'false'
         run: sbt +update
 
       - name: Setup Java (temurin@17)
