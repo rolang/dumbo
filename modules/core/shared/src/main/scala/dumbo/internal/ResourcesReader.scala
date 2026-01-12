@@ -36,7 +36,8 @@ private[dumbo] object ResourceReader {
     def listRec(dirs: List[File], files: List[File]): List[File] =
       dirs match {
         case x :: xs =>
-          val (d, f) = x.listFiles().toList.partition(_.isDirectory())
+          val listed = Option(x.listFiles()).fold(List.empty[File])(_.toList)
+          val (d, f) = listed.partition(_.isDirectory())
           listRec(d ::: xs, f ::: files)
         case Nil => files
       }

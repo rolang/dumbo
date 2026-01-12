@@ -110,4 +110,15 @@ class DumboResourcesSpec extends ffstest.FTest {
           }
     } yield ()
   }
+
+  test("handle non-existent directory without NPE") {
+    for {
+      files <- Dumbo.withFilesIn[IO](Path("/non/existent/directory")).listMigrationFiles
+      _      = files match {
+            case Valid(files) =>
+              assert(files.isEmpty, "Expected empty list for non-existent directory")
+            case Invalid(errs) => fail(errs.toList.mkString("\n"))
+          }
+    } yield ()
+  }
 }
