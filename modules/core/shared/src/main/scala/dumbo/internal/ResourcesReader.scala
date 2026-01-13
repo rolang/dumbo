@@ -4,13 +4,15 @@
 
 package dumbo.internal
 
-import java.io.File
+import java.nio.file.Files
+
+import scala.jdk.CollectionConverters.*
 
 import cats.effect.Sync
 import cats.implicits.*
 import dumbo.{ResourceFile, ResourceFilePath}
 import fs2.io.file.{Files as Fs2Files, Flags, Path}
-import fs2.{Stream, text}
+import fs2.{RaiseThrowable, Stream, text}
 
 private[dumbo] trait ResourceReader[F[_]] {
   def relativeResourcePath(resource: ResourceFile): String
@@ -27,20 +29,10 @@ private[dumbo] trait ResourceReader[F[_]] {
 }
 
 private[dumbo] object ResourceReader {
-  def fileFs[F[_]: Fs2Files](sourceDir: Path): ResourceReader[F] = {
+  def fileFs[F[_]: Fs2Files: RaiseThrowable](sourceDir: Path): ResourceReader[F] = {
     val base = Path.fromNioPath(java.nio.file.Paths.get(new java.io.File("").toURI()))
 
     @inline def absolutePath(p: Path) = if (p.isAbsolute) p else base / p
-
-    @scala.annotation.tailrec
-    def listRec(dirs: List[File], files: List[File]): List[File] =
-      dirs match {
-        case x :: xs =>
-          val listed = Option(x.listFiles()).fold(List.empty[File])(_.toList)
-          val (d, f) = listed.partition(_.isDirectory())
-          listRec(d ::: xs, f ::: files)
-        case Nil => files
-      }
 
     new ResourceReader[F] {
 
@@ -49,9 +41,18 @@ private[dumbo] object ResourceReader {
 
       override val location: Option[String]          = Some(absolutePath(sourceDir).toString)
       override def list: Stream[F, ResourceFilePath] =
-        Stream.emits(
-          listRec(List(new File(absolutePath(sourceDir).toString)), Nil).map(f => ResourceFilePath(f.getPath()))
-        )
+        try {
+          Stream.emits(
+            Files
+              .walk(absolutePath(sourceDir).toNioPath)
+              .iterator()
+              .asScala
+              .toList
+              .map(p => ResourceFilePath(p.toString()))
+          )
+        } catch {
+          case t: Throwable => Stream.raiseError(t)
+        }
 
       override def readUtf8Lines(path: ResourceFilePath): Stream[F, String] =
         Fs2Files[F].readUtf8Lines(absolutePath(Path(path.value)))

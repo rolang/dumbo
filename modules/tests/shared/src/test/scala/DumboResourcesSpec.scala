@@ -113,12 +113,9 @@ class DumboResourcesSpec extends ffstest.FTest {
 
   test("handle non-existent directory without NPE") {
     for {
-      files <- Dumbo.withFilesIn[IO](Path("/non/existent/directory")).listMigrationFiles
-      _      = files match {
-            case Valid(files) =>
-              assert(files.isEmpty, "Expected empty list for non-existent directory")
-            case Invalid(errs) => fail(errs.toList.mkString("\n"))
-          }
+      res <- Dumbo.withFilesIn[IO](Path("/non/existent/directory")).listMigrationFiles.attempt
+      _    = assert(res.isLeft)
+      _    = assert(res.left.exists(_.isInstanceOf[java.nio.file.NoSuchFileException]))
     } yield ()
   }
 }

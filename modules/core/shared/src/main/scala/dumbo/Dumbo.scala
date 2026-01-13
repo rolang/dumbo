@@ -18,9 +18,9 @@ import cats.implicits.*
 import dumbo.exception.DumboValidationException
 import dumbo.internal.{ResourceReader, Statements}
 import dumbo.logging.Logger
-import fs2.Stream
 import fs2.io.file.*
 import fs2.io.net.Network
+import fs2.{RaiseThrowable, Stream}
 import org.typelevel.otel4s.trace.Tracer
 import skunk.*
 import skunk.Session.Credentials
@@ -509,7 +509,7 @@ object Dumbo extends internal.DumboPlatform {
   def withResources[F[_]: Sync](resources: List[ResourceFilePath]): DumboWithResourcesPartiallyApplied[F] =
     new DumboWithResourcesPartiallyApplied[F](ResourceReader.embeddedResources(Sync[F].pure(resources)))
 
-  def withFilesIn[F[_]: Files](dir: Path): DumboWithResourcesPartiallyApplied[F] =
+  def withFilesIn[F[_]: Files: RaiseThrowable](dir: Path): DumboWithResourcesPartiallyApplied[F] =
     new DumboWithResourcesPartiallyApplied[F](ResourceReader.fileFs(dir))
 
   // input duration in milliseconds
