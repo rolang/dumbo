@@ -5,12 +5,13 @@
 package dumbo.internal
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, NoSuchFileException, Path}
 
 import scala.io.Source
 import scala.jdk.CollectionConverters.*
 
 import cats.effect.Sync
+import cats.implicits.*
 import dumbo.{ResourceFile, ResourceFilePath}
 
 private[dumbo] trait ResourceReader[F[_]] {
@@ -39,15 +40,24 @@ private[dumbo] object ResourceReader {
         absolutePath(sourceDir).relativize(absolutePath(Path.of(resource.path.value))).toString
 
       override val location: Option[String]        = Some(absolutePath(sourceDir).toString)
-      override def list: F[List[ResourceFilePath]] =
-        Sync[F].delay(
-          Files
-            .walk(absolutePath(sourceDir))
-            .iterator()
-            .asScala
-            .toList
-            .map(p => ResourceFilePath(p.toString()))
-        )
+      override def list: F[List[ResourceFilePath]] = {
+        val dir = absolutePath(sourceDir)
+        // checking whether the folder exists for consistent behaviour across JVM and Native platform
+        // by default on the JVM a NoSuchFileException is thrown whereas on Native an empty result is returned
+        Sync[F].delay(Files.exists(dir)).flatMap {
+          case true =>
+            Sync[F].delay(
+              Files
+                .walk(dir)
+                .iterator()
+                .asScala
+                .toList
+                .map(p => ResourceFilePath(p.toString()))
+            )
+          case false =>
+            Sync[F].raiseError(new NoSuchFileException(s"Directory ${dir.toString()} was not found"))
+        }
+      }
 
       def readUtf8Lines(path: ResourceFilePath): F[List[String]] =
         Sync[F].delay(Files.readAllLines(Path.of(path.value), StandardCharsets.UTF_8).asScala.toList)
