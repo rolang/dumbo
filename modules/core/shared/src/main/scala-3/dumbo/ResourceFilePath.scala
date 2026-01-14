@@ -4,13 +4,10 @@
 
 package dumbo
 
-import java.io.File
-import java.nio.file.Paths
+import java.nio.file.{Files, Path, Paths}
 
 import scala.jdk.CollectionConverters.*
 import scala.quoted.*
-
-import fs2.io.file.Path
 
 opaque type ResourceFilePath = String
 object ResourceFilePath:
@@ -51,18 +48,13 @@ object ResourceFilePath:
 
           Expr(resources)
         else
-          @scala.annotation.tailrec
-          def listRec(dirs: List[File], files: List[File]): List[File] =
-            dirs match
-              case x :: xs =>
-                val (d, f) = x.listFiles().toList.partition(_.isDirectory())
-                listRec(d ::: xs, f ::: files)
-              case Nil => files
-
           val base      = Paths.get(head.toURI())
-          val resources = listRec(List(File(base.toString())), Nil).map(f =>
-            s"/$location/${base.relativize(Paths.get(f.getAbsolutePath()))}"
-          )
+          val resources = Files
+            .walk(base)
+            .iterator()
+            .asScala
+            .toList
+            .map(p => s"/$location/${base.relativize(p)}")
           Expr(resources)
       case Nil      => report.errorAndAbort(s"resource ${location} was not found")
       case multiple =>
@@ -80,4 +72,4 @@ object ResourceFilePath:
   extension (s: ResourceFilePath)
     inline def value: String                       = s
     inline def append(p: String): ResourceFilePath = s + p
-    inline def fileName: String                    = Path(s).fileName.toString
+    inline def fileName: String                    = Path.of(s).getFileName().toString()

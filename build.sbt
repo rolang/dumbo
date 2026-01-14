@@ -224,9 +224,9 @@ lazy val commonSettings = List(
   },
   Compile / scalacOptions ++= {
     if (scalaVersion.value.startsWith("3"))
-      Seq("-source:future")
+      Seq("-source:future", "-release:17")
     else
-      Seq("-Xsource:3")
+      Seq("-Xsource:3", "-release:17")
   },
 )
 
