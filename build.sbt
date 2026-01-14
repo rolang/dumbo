@@ -8,6 +8,7 @@ ThisBuild / tlBaseVersion      := "0.6"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
+ThisBuild / tlJdkRelease       := Some(17)
 
 ThisBuild / organization := "dev.rolang"
 ThisBuild / licenses     := Seq(License.MIT)
@@ -224,9 +225,9 @@ lazy val commonSettings = List(
   },
   Compile / scalacOptions ++= {
     if (scalaVersion.value.startsWith("3"))
-      Seq("-source:future", "-release:17")
+      Seq("-source:future")
     else
-      Seq("-Xsource:3", "-release:17")
+      Seq("-Xsource:3")
   },
 )
 
