@@ -7,8 +7,9 @@ package dumbo.internal
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, NoSuchFileException, Path}
 
-import scala.io.Source
+import scala.io.{BufferedSource, Source}
 import scala.jdk.CollectionConverters.*
+import scala.util.Using
 
 import cats.effect.Sync
 import cats.implicits.*
@@ -47,12 +48,12 @@ private[dumbo] object ResourceReader {
         Sync[F].delay(Files.exists(dir)).flatMap {
           case true =>
             Sync[F].delay(
-              Files
-                .walk(dir)
-                .iterator()
-                .asScala
-                .toList
-                .map(p => ResourceFilePath(p.toString()))
+              Using.resource(Files.walk(dir))(
+                _.iterator().asScala
+                  .filter(Files.isRegularFile(_))
+                  .map(p => ResourceFilePath(p.toString()))
+                  .toList
+              )
             )
           case false =>
             Sync[F].raiseError(new NoSuchFileException(s"Directory ${dir.toString()} was not found"))
@@ -87,21 +88,20 @@ private[dumbo] object ResourceReader {
       override def list: F[List[ResourceFilePath]] = readResources
 
       override def readUtf8Lines(path: ResourceFilePath): F[List[String]] =
-        Sync[F].delay(
-          Source
-            .fromInputStream(getClass().getResourceAsStream(path.value), StandardCharsets.UTF_8.toString())
-            .getLines()
-            .toList
-        )
+        readResource(path, _.getLines().toList)
 
       override def readUtf8(path: ResourceFilePath): F[String] =
-        Sync[F].delay(
-          Source
-            .fromInputStream(getClass().getResourceAsStream(path.value), StandardCharsets.UTF_8.toString())
-            .mkString
-        )
+        readResource(path, _.mkString)
 
       override def exists(path: ResourceFilePath): F[Boolean] =
         Sync[F].delay(getClass().getResourceAsStream(path.value) != null)
+
+      private def readResource[T](path: ResourceFilePath, f: BufferedSource => T): F[T] =
+        Sync[F].delay(Option(getClass().getResourceAsStream(path.value))).flatMap {
+          case Some(is) =>
+            Sync[F].delay(Using.resource(Source.fromInputStream(is, StandardCharsets.UTF_8.toString()))(f))
+          case None =>
+            Sync[F].raiseError(new NoSuchFileException(s"Resource ${path.toString()} was not found"))
+        }
     }
 }

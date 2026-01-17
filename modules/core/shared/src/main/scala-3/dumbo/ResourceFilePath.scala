@@ -8,6 +8,7 @@ import java.nio.file.{Files, Path, Paths}
 
 import scala.jdk.CollectionConverters.*
 import scala.quoted.*
+import scala.util.Using
 
 opaque type ResourceFilePath = String
 object ResourceFilePath:
@@ -49,12 +50,12 @@ object ResourceFilePath:
           Expr(resources)
         else
           val base      = Paths.get(head.toURI())
-          val resources = Files
-            .walk(base)
-            .iterator()
-            .asScala
-            .toList
-            .map(p => s"/$location/${base.relativize(p)}")
+          val resources = Using.resource(Files.walk(base))(
+            _.iterator().asScala
+              .filter(Files.isRegularFile(_))
+              .map(p => s"/$location/${base.relativize(p)}")
+              .toList
+          )
           Expr(resources)
       case Nil      => report.errorAndAbort(s"resource ${location} was not found")
       case multiple =>

@@ -9,7 +9,7 @@ import java.nio.file.{Files, Paths}
 import java.util.zip.ZipFile
 
 import scala.jdk.CollectionConverters.*
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success, Try, Using}
 
 import cats.effect.Resource
 import cats.effect.kernel.Sync
@@ -32,12 +32,12 @@ object ResourceFilePath {
           Sync[F].delay {
             val base      = Paths.get(url.toURI())
             val resources =
-              Files
-                .walk(base)
-                .iterator()
-                .asScala
-                .toList
-                .map(p => ResourceFilePath(s"/$location/${base.relativize(p)}"))
+              Using.resource(Files.walk(base))(
+                _.iterator().asScala
+                  .filter(Files.isRegularFile(_))
+                  .map(p => ResourceFilePath(s"/$location/${base.relativize(p)}"))
+                  .toList
+              )
             resources
           },
         )
