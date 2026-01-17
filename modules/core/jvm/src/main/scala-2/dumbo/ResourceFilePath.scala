@@ -4,13 +4,12 @@
 
 package dumbo
 
-import java.io.File
 import java.net.URI
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
 import java.util.zip.ZipFile
 
 import scala.jdk.CollectionConverters.*
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success, Try, Using}
 
 import cats.effect.Resource
 import cats.effect.kernel.Sync
@@ -22,15 +21,6 @@ final case class ResourceFilePath(value: String) extends AnyVal {
 }
 
 object ResourceFilePath {
-  @scala.annotation.tailrec
-  private def listRec(dirs: List[File], files: List[File]): List[File] =
-    dirs match {
-      case x :: xs =>
-        val (d, f) = x.listFiles().toList.partition(_.isDirectory())
-        listRec(d ::: xs, f ::: files)
-      case Nil => files
-    }
-
   private[dumbo] def fromResourcesDir[F[_]: Sync](location: String): (String, F[List[ResourceFilePath]]) =
     Try(getClass().getClassLoader().getResources(location).asScala.toList) match {
       case Failure(err)                                           => ("", Sync[F].raiseError(err))
@@ -42,8 +32,11 @@ object ResourceFilePath {
           Sync[F].delay {
             val base      = Paths.get(url.toURI())
             val resources =
-              listRec(List(new File(base.toString())), Nil).map(f =>
-                ResourceFilePath(s"/$location/${base.relativize(Paths.get(f.getAbsolutePath()))}")
+              Using.resource(Files.walk(base))(
+                _.iterator().asScala
+                  .filter(Files.isRegularFile(_))
+                  .map(p => ResourceFilePath(s"/$location/${base.relativize(p)}"))
+                  .toList
               )
             resources
           },

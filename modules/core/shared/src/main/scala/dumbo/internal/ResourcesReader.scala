@@ -4,61 +4,70 @@
 
 package dumbo.internal
 
-import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, NoSuchFileException, Path}
+
+import scala.io.{BufferedSource, Source}
+import scala.jdk.CollectionConverters.*
+import scala.util.Using
 
 import cats.effect.Sync
 import cats.implicits.*
 import dumbo.{ResourceFile, ResourceFilePath}
-import fs2.io.file.{Files as Fs2Files, Flags, Path}
-import fs2.{Stream, text}
 
 private[dumbo] trait ResourceReader[F[_]] {
   def relativeResourcePath(resource: ResourceFile): String
 
   def location: Option[String]
 
-  def list: fs2.Stream[F, ResourceFilePath]
+  def list: F[List[ResourceFilePath]]
 
-  def readUtf8(path: ResourceFilePath): fs2.Stream[F, String]
+  def readUtf8(path: ResourceFilePath): F[String]
 
-  def readUtf8Lines(path: ResourceFilePath): fs2.Stream[F, String]
+  def readUtf8Lines(path: ResourceFilePath): F[List[String]]
 
   def exists(path: ResourceFilePath): F[Boolean]
 }
 
 private[dumbo] object ResourceReader {
-  def fileFs[F[_]: Fs2Files](sourceDir: Path): ResourceReader[F] = {
-    val base = Path.fromNioPath(java.nio.file.Paths.get(new java.io.File("").toURI()))
+  def fileFs[F[_]: Sync](sourceDir: Path): ResourceReader[F] = {
+    val base = Path.of(new java.io.File("").toURI())
 
-    @inline def absolutePath(p: Path) = if (p.isAbsolute) p else base / p
-
-    @scala.annotation.tailrec
-    def listRec(dirs: List[File], files: List[File]): List[File] =
-      dirs match {
-        case x :: xs =>
-          val (d, f) = x.listFiles().toList.partition(_.isDirectory())
-          listRec(d ::: xs, f ::: files)
-        case Nil => files
-      }
+    @inline def absolutePath(p: Path) = if (p.isAbsolute) p else Path.of(base.toString(), p.toString())
 
     new ResourceReader[F] {
 
       override def relativeResourcePath(resource: ResourceFile): String =
-        absolutePath(sourceDir).relativize(absolutePath(Path(resource.path.value))).toString
+        absolutePath(sourceDir).relativize(absolutePath(Path.of(resource.path.value))).toString
 
-      override val location: Option[String]          = Some(absolutePath(sourceDir).toString)
-      override def list: Stream[F, ResourceFilePath] =
-        Stream.emits(
-          listRec(List(new File(absolutePath(sourceDir).toString)), Nil).map(f => ResourceFilePath(f.getPath()))
-        )
+      override val location: Option[String]        = Some(absolutePath(sourceDir).toString)
+      override def list: F[List[ResourceFilePath]] = {
+        val dir = absolutePath(sourceDir)
+        // checking whether the folder exists for consistent behaviour across JVM and Native platform
+        // by default on the JVM a NoSuchFileException is thrown whereas on Native an empty result is returned
+        Sync[F].delay(Files.exists(dir)).flatMap {
+          case true =>
+            Sync[F].delay(
+              Using.resource(Files.walk(dir))(
+                _.iterator().asScala
+                  .filter(Files.isRegularFile(_))
+                  .map(p => ResourceFilePath(p.toString()))
+                  .toList
+              )
+            )
+          case false =>
+            Sync[F].raiseError(new NoSuchFileException(s"Directory ${dir.toString()} was not found"))
+        }
+      }
 
-      override def readUtf8Lines(path: ResourceFilePath): Stream[F, String] =
-        Fs2Files[F].readUtf8Lines(absolutePath(Path(path.value)))
+      def readUtf8Lines(path: ResourceFilePath): F[List[String]] =
+        Sync[F].delay(Files.readAllLines(Path.of(path.value), StandardCharsets.UTF_8).asScala.toList)
 
-      override def readUtf8(path: ResourceFilePath): Stream[F, String] =
-        Fs2Files[F].readAll(absolutePath(Path(path.value)), 64 * 2048, Flags.Read).through(fs2.text.utf8.decode)
+      override def readUtf8(path: ResourceFilePath): F[String] =
+        Sync[F].delay(Files.readString(Path.of(path.value)))
 
-      override def exists(path: ResourceFilePath): F[Boolean] = Fs2Files[F].exists(absolutePath(Path(path.value)))
+      override def exists(path: ResourceFilePath): F[Boolean] =
+        Sync[F].delay(Files.exists(absolutePath(Path.of(path.value))))
     }
   }
 
@@ -76,20 +85,23 @@ private[dumbo] object ResourceReader {
 
       override val location: Option[String] = locationInfo
 
-      override def list: Stream[F, ResourceFilePath] = Stream.evals(readResources)
+      override def list: F[List[ResourceFilePath]] = readResources
 
-      override def readUtf8Lines(path: ResourceFilePath): Stream[F, String] = readUtf8(path).through(text.lines)
+      override def readUtf8Lines(path: ResourceFilePath): F[List[String]] =
+        readResource(path, _.getLines().toList)
 
-      override def readUtf8(path: ResourceFilePath): Stream[F, String] =
-        fs2.io
-          .readInputStream(
-            Sync[F].delay(getClass().getResourceAsStream(path.value)),
-            64 * 2048,
-            closeAfterUse = true,
-          )
-          .through(fs2.text.utf8.decode)
+      override def readUtf8(path: ResourceFilePath): F[String] =
+        readResource(path, _.mkString)
 
       override def exists(path: ResourceFilePath): F[Boolean] =
         Sync[F].delay(getClass().getResourceAsStream(path.value) != null)
+
+      private def readResource[T](path: ResourceFilePath, f: BufferedSource => T): F[T] =
+        Sync[F].delay(Option(getClass().getResourceAsStream(path.value))).flatMap {
+          case Some(is) =>
+            Sync[F].delay(Using.resource(Source.fromInputStream(is, StandardCharsets.UTF_8.toString()))(f))
+          case None =>
+            Sync[F].raiseError(new NoSuchFileException(s"Resource ${path.toString()} was not found"))
+        }
     }
 }

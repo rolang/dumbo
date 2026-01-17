@@ -4,13 +4,11 @@
 
 package dumbo
 
-import java.io.File
-import java.nio.file.Paths
+import java.nio.file.{Files, Path, Paths}
 
 import scala.jdk.CollectionConverters.*
 import scala.quoted.*
-
-import fs2.io.file.Path
+import scala.util.Using
 
 opaque type ResourceFilePath = String
 object ResourceFilePath:
@@ -27,7 +25,7 @@ object ResourceFilePath:
           val srcUriStr   = head.toURI().toString()
           val jarFilePath = srcUriStr.slice(srcUriStr.lastIndexOf(":") + 1, srcUriStr.lastIndexOf("!"))
 
-          val resources = scala.util.Using.resource {
+          val resources = Using.resource {
             try {
               java.util.zip.ZipFile(jarFilePath)
             } catch {
@@ -51,17 +49,12 @@ object ResourceFilePath:
 
           Expr(resources)
         else
-          @scala.annotation.tailrec
-          def listRec(dirs: List[File], files: List[File]): List[File] =
-            dirs match
-              case x :: xs =>
-                val (d, f) = x.listFiles().toList.partition(_.isDirectory())
-                listRec(d ::: xs, f ::: files)
-              case Nil => files
-
           val base      = Paths.get(head.toURI())
-          val resources = listRec(List(File(base.toString())), Nil).map(f =>
-            s"/$location/${base.relativize(Paths.get(f.getAbsolutePath()))}"
+          val resources = Using.resource(Files.walk(base))(
+            _.iterator().asScala
+              .filter(Files.isRegularFile(_))
+              .map(p => s"/$location/${base.relativize(p)}")
+              .toList
           )
           Expr(resources)
       case Nil      => report.errorAndAbort(s"resource ${location} was not found")
@@ -80,4 +73,4 @@ object ResourceFilePath:
   extension (s: ResourceFilePath)
     inline def value: String                       = s
     inline def append(p: String): ResourceFilePath = s + p
-    inline def fileName: String                    = Path(s).fileName.toString
+    inline def fileName: String                    = Path.of(s).getFileName().toString()

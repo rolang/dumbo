@@ -4,10 +4,11 @@ lazy val `scala-2.13`     = "2.13.18"
 lazy val `scala-3`        = "3.3.7"
 lazy val `scala-3-latest` = "3.7.4"
 
-ThisBuild / tlBaseVersion      := "0.6"
+ThisBuild / tlBaseVersion      := "0.7"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
+ThisBuild / tlJdkRelease       := Some(17)
 
 ThisBuild / organization := "dev.rolang"
 ThisBuild / licenses     := Seq(License.MIT)

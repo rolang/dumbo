@@ -195,16 +195,12 @@ class Dumbo[F[_]: Sync: Logger](
             }"""
         )
 
-      statements <- fs.readUtf8(source.path)
-                      .compile
-                      .toList
-                      .map(_.mkString)
-                      .map { sql =>
-                        // for non transactional operations we need to split the content into single statements
-                        // When a simple Query message contains more than one SQL statement (separated by semicolons), those statements are executed as a single transaction.
-                        // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT
-                        if (source.executeInTransaction) Vector(sql) else Statements.intoSingleStatements(sql)
-                      }
+      statements <- fs.readUtf8(source.path).map { sql =>
+                      // for non transactional operations we need to split the content into single statements
+                      // When a simple Query message contains more than one SQL statement (separated by semicolons), those statements are executed as a single transaction.
+                      // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-MULTI-STATEMENT
+                      if (source.executeInTransaction) Vector(sql) else Statements.intoSingleStatements(sql)
+                    }
 
       (duration, _) <- Clock[F].timed {
                          statements
@@ -509,8 +505,8 @@ object Dumbo extends internal.DumboPlatform {
   def withResources[F[_]: Sync](resources: List[ResourceFilePath]): DumboWithResourcesPartiallyApplied[F] =
     new DumboWithResourcesPartiallyApplied[F](ResourceReader.embeddedResources(Sync[F].pure(resources)))
 
-  def withFilesIn[F[_]: Files](dir: Path): DumboWithResourcesPartiallyApplied[F] =
-    new DumboWithResourcesPartiallyApplied[F](ResourceReader.fileFs(dir))
+  def withFilesIn[F[_]: Sync](dir: Path): DumboWithResourcesPartiallyApplied[F] =
+    new DumboWithResourcesPartiallyApplied[F](ResourceReader.fileFs(dir.toNioPath))
 
   // input duration in milliseconds
   // output in format mm:ss.ms e.g. 00:00.000s
@@ -533,7 +529,7 @@ object Dumbo extends internal.DumboPlatform {
   private[dumbo] def listMigrationFiles[F[_]: Sync](
     fs: ResourceReader[F]
   ): F[ValidatedNec[DumboValidationException, List[ResourceFile]]] =
-    readResourceFiles[F](fs).compile.toList.map { sf =>
+    readResourceFiles[F](fs).map { sf =>
       val (errs, files) = (sf.collect { case Left(err) => err }, sf.collect { case Right(v) => v })
       val duplicates    = files.groupBy(_.version).filter(_._2.length > 1).toList
 
@@ -553,15 +549,14 @@ object Dumbo extends internal.DumboPlatform {
 
   private[dumbo] def readResourceFiles[F[_]: Sync](
     fs: ResourceReader[F]
-  ): Stream[F, Either[String, ResourceFile]] =
-    fs.list
-      .filter(f => f.value.endsWith(".sql"))
-      .evalMap { path =>
+  ): F[List[Either[String, ResourceFile]]] =
+    fs.list.flatMap {
+      _.filter(f => f.value.endsWith(".sql")).traverse { path =>
         val confPath = path.append(".conf")
 
         fs.exists(confPath)
           .flatMap {
-            case true  => fs.readUtf8Lines(confPath).compile.toList.map(ResourceFileConfig.fromLines)
+            case true  => fs.readUtf8Lines(confPath).map(ResourceFileConfig.fromLines)
             case false => Set.empty[ResourceFileConfig].asRight[String].pure[F]
           }
           .flatMap {
@@ -581,18 +576,14 @@ object Dumbo extends internal.DumboPlatform {
             case Left(err) => err.asLeft[ResourceFile].pure[F]
           }
       }
+    }
 
   // implementation of checksum from Flyway
   // https://github.com/flyway/flyway/blob/main/flyway-core/src/main/java/org/flywaydb/core/internal/resolver/ChecksumCalculator.java#L59
   private[dumbo] def checksum[F[_]: Sync](p: ResourceFilePath, fs: ResourceReader[F]): F[Int] =
     for {
       crc32 <- (new CRC32()).pure[F]
-      _     <- fs.readUtf8Lines(p)
-             .map { line =>
-               crc32.update(line.getBytes(StandardCharsets.UTF_8))
-             }
-             .compile
-             .drain
+      _     <- fs.readUtf8Lines(p).map(_.foreach(line => crc32.update(line.getBytes(StandardCharsets.UTF_8))))
     } yield crc32.getValue().toInt
 
   // need to ensure that default schema appears first in the list
