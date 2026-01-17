@@ -25,7 +25,7 @@ object ResourceFilePath:
           val srcUriStr   = head.toURI().toString()
           val jarFilePath = srcUriStr.slice(srcUriStr.lastIndexOf(":") + 1, srcUriStr.lastIndexOf("!"))
 
-          val resources = scala.util.Using.resource {
+          val resources = Using.resource {
             try {
               java.util.zip.ZipFile(jarFilePath)
             } catch {
