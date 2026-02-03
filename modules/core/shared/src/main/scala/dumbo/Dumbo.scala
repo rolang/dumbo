@@ -15,8 +15,8 @@ import cats.effect.kernel.Clock
 import cats.effect.std.Console
 import cats.effect.{Async, LiftIO, Resource, Sync, Temporal}
 import cats.implicits.*
-import dumbo.exception.DumboValidationException
-import dumbo.internal.{ResourceReader, Statements}
+import dumbo.exception.{DumboCleanException, DumboValidationException}
+import dumbo.internal.{CatalogQueries, ResourceReader, Statements}
 import dumbo.logging.Logger
 import fs2.Stream
 import fs2.io.file.*
@@ -36,6 +36,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit S: Sync[F], T: Temporal[F], L: Logger[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
     withSession(
       sessionResource = toSessionResource(connection, defaultSchema, schemas),
@@ -43,6 +44,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
       validateOnMigrate = validateOnMigrate,
+      cleanDisabled = cleanDisabled,
     )
 
   def withSession(
@@ -51,6 +53,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit S: Sync[F], L: Logger[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
@@ -59,6 +62,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
       validateOnMigrate = validateOnMigrate,
+      cleanDisabled = cleanDisabled,
     )
 
   def withMigrationStateLogAfter(logMigrationStateAfter: FiniteDuration)(
@@ -67,6 +71,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
     implicit val network: Network[F] = Network.forLiftIO[F]
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
@@ -77,6 +82,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas,
       schemaHistoryTable,
       validateOnMigrate,
+      cleanDisabled,
     )
   }
 
@@ -86,6 +92,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit A: Async[F], L: Logger[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
@@ -94,6 +101,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
       validateOnMigrate = validateOnMigrate,
+      cleanDisabled = cleanDisabled,
       progressMonitor = Resource
         .eval(sessionResource.use(s => Dumbo.hasTableLockSupport(s, s"${defaultSchema}.${schemaHistoryTable}")))
         .flatMap {
@@ -171,6 +179,7 @@ class Dumbo[F[_]: Sync: Logger](
   schemas: Set[String],
   schemaHistoryTable: String,
   private[dumbo] val validateOnMigrate: Boolean,
+  cleanDisabled: Boolean,
   progressMonitor: Resource[F, Unit] = Resource.unit[F],
 ) {
   import Dumbo.*
@@ -477,6 +486,87 @@ class Dumbo[F[_]: Sync: Logger](
       .void
   }
 
+  def runClean: F[Unit] =
+    if (cleanDisabled)
+      Sync[F].raiseError(new DumboCleanException("Clean has been disabled. Set cleanDisabled to false to enable it."))
+    else sessionResource.use(cleanBySession)
+
+  private def cleanBySession(session: Session[F]): F[Unit] = for {
+    _ <- Logger[F].logInfo(s"Cleaning schemas ${allSchemas.mkString(", ")}")
+    // determine which schemas were created by Dumbo (recorded in schema history)
+    // if history table doesn't exist, assume no schemas were created by Dumbo
+    schemasCreatedByDumbo <- session.execute(dumboHistory.createdSchemasQuery).map { scripts =>
+                               scripts.flatMap(
+                                 _.split(",").map(_.trim.stripPrefix("\"").stripSuffix("\"")).filter(_.nonEmpty)
+                               ).toSet
+                             }.recover {
+                               case _: skunk.exception.PostgresErrorException => Set.empty[String]
+                             }
+    _ <- allSchemas.traverse_ { schema =>
+           val createdByDumbo = schemasCreatedByDumbo.contains(schema)
+           for {
+             _ <- Logger[F].logInfo(
+                    s"""Cleaning schema "$schema"${if (createdByDumbo) " (will be dropped)" else ""}"""
+                  )
+             _ <- if (createdByDumbo)
+                    session.execute(sql"DROP SCHEMA IF EXISTS #${schema} CASCADE".command).void
+                  else cleanSchema(session, schema)
+           } yield ()
+         }
+    _ <- Logger[F].logInfo(s"Successfully cleaned schemas ${allSchemas.mkString(", ")}")
+  } yield ()
+
+  // Drops all objects in the given schema following Flyway's doClean order:
+  // materialized views, views, tables, base types (with recreate), routines,
+  // enums, domains, sequences, base types (final cleanup)
+  private def cleanSchema(session: Session[F], schema: String): F[Unit] = {
+    def queryNames(q: Query[String, String]): F[List[String]] =
+      session.execute(q)(schema)
+
+    def dropAll(objType: String, names: List[String], cascade: Boolean = true): F[Unit] =
+      names.traverse_ { name =>
+        val cascadeSql = if (cascade) " CASCADE" else ""
+        session.execute(sql"DROP #${objType} IF EXISTS #${schema}.#${name}#${cascadeSql}".command).void
+      }
+
+    for {
+      // 1. Materialized views
+      matViews <- queryNames(CatalogQueries.listMaterializedViewsQuery)
+      _        <- dropAll("MATERIALIZED VIEW", matViews)
+      // 2. Views
+      views    <- queryNames(CatalogQueries.listViewsQuery)
+      _        <- dropAll("VIEW", views)
+      // 3. Tables
+      tables   <- queryNames(CatalogQueries.listTablesQuery)
+      _        <- dropAll("TABLE", tables)
+      // 4. Base types (with recreate to break circular deps)
+      types    <- queryNames(CatalogQueries.listBaseTypesQuery)
+      _        <- dropAll("TYPE", types)
+      _        <- types.traverse_(name => session.execute(sql"CREATE TYPE #${schema}.#${name}".command).void)
+      // 5. Routines (functions, aggregates, procedures)
+      _        <- cleanRoutines(session, schema)
+      // 6. Enums
+      enums    <- queryNames(CatalogQueries.listEnumsQuery)
+      _        <- dropAll("TYPE", enums)
+      // 7. Domains
+      domains  <- queryNames(CatalogQueries.listDomainsQuery)
+      _        <- dropAll("DOMAIN", domains)
+      // 8. Sequences
+      seqs     <- queryNames(CatalogQueries.listSequencesQuery)
+      _        <- dropAll("SEQUENCE", seqs)
+      // 9. Base types (final cleanup, no recreate)
+      types2   <- queryNames(CatalogQueries.listBaseTypesQuery)
+      _        <- dropAll("TYPE", types2)
+    } yield ()
+  }
+
+  private def cleanRoutines(session: Session[F], schema: String): F[Unit] =
+    session.execute(CatalogQueries.listRoutinesQuery)(schema).flatMap { routines =>
+      routines.traverse_ { case (kind, signature) =>
+        session.execute(sql"DROP #${kind} IF EXISTS #${schema}.#${signature} CASCADE".command).void
+      }
+    }
+
   def runValidationWithHistory: F[ValidatedNec[DumboValidationException, Unit]] =
     listMigrationFiles(resReader).flatMap {
       case Valid(resources) =>
@@ -495,6 +585,7 @@ object Dumbo extends internal.DumboPlatform {
     val schemas: Set[String]       = Set.empty[String]
     val schemaHistoryTable: String = "flyway_schema_history"
     val validateOnMigrate: Boolean = true
+    val cleanDisabled: Boolean     = true
     val port: Int                  = 5432
   }
 

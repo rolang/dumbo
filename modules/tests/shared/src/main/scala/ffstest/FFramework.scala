@@ -112,6 +112,22 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     ).runValidationWithHistory
   }
 
+  def dumboClean(
+    defaultSchema: String,
+    withResources: DumboWithResourcesPartiallyApplied[IO],
+    schemas: List[String] = Nil,
+    schemaHistoryTable: String = "flyway_schema_history",
+  )(implicit l: Logger[IO]): IO[Unit] =
+    withResources
+      .apply(
+        connection = connectionConfig,
+        defaultSchema = defaultSchema,
+        schemas = schemas.toSet,
+        schemaHistoryTable = schemaHistoryTable,
+        cleanDisabled = false,
+      )
+      .runClean
+
   def dropSchemas: IO[Unit] = session().use { s =>
     for {
       customSchemas <-

@@ -100,6 +100,10 @@ class History(tableName: String) {
           (${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER) WHERE installed_rank = $int4
           RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
 
+  val createdSchemasQuery: Query[Void, String] =
+    sql"""SELECT script FROM #${tableName} WHERE type = 'SCHEMA' AND installed_rank = 0"""
+      .query(varchar(1000))
+
   val insertSchemaEntry: Command[String] =
     sql"""INSERT INTO #${tableName}
           (installed_rank, description, type, script, execution_time, success, installed_on, installed_by)

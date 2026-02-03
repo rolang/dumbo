@@ -73,6 +73,13 @@ enum Command(val keys: Set[String], val desc: String, val configs: List[Config[?
         Config.values.toList,
         Nil,
       )
+  case Clean
+      extends Command(
+        Set("clean"),
+        "Drops all objects in the configured schemas",
+        Config.values.toList,
+        Nil,
+      )
   case Version extends Command(Set("version", "-v", "--version"), "Print the Dumbo version", Nil, Nil)
 
 object Command:
@@ -144,6 +151,17 @@ enum Config[T](val key: String, val desc: String, val parse: String => Either[St
           case "true"  => Right(true)
           case "false" => Right(false)
           case other   => Left(s"Invalid value for validateOnMigrate: $other")
+        },
+      )
+
+  case CleanDisabled
+      extends Config[Boolean](
+        key = "-cleanDisabled",
+        desc = "Whether to disable clean (default: true)",
+        {
+          case "true"  => Right(true)
+          case "false" => Right(false)
+          case other   => Left(s"Invalid value for cleanDisabled: $other")
         },
       )
 

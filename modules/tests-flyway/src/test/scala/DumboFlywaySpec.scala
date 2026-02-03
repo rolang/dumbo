@@ -8,28 +8,36 @@ import scala.io.AnsiColor
 
 import cats.data.NonEmptyList
 import cats.effect.IO
+import cats.implicits.*
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
 import fs2.io.file.Path
 import org.flywaydb.core.Flyway
-import org.flywaydb.core.api.output.MigrateResult
+import org.flywaydb.core.api.output.{CleanResult, MigrateResult}
+import skunk.codec.all.*
+import skunk.implicits.*
 
 trait DumboFlywaySpec extends ffstest.FTest {
   def db: Db
 
-  def flywayMigrate(defaultSchema: String, sourcesPath: Path, schemas: List[String] = Nil): IO[MigrateResult] = IO(
+  private def flywayInstance(defaultSchema: String, sourcesPath: Path, schemas: List[String]) =
     Flyway
       .configure()
       .defaultSchema(defaultSchema)
       .schemas(schemas*)
       .locations(sourcesPath.toString)
+      .cleanDisabled(false)
       .dataSource(
         s"jdbc:postgresql://localhost:$postgresPort/postgres?ssl=false",
         "root",
         null,
       )
       .load()
-      .migrate()
-  )
+
+  def flywayMigrate(defaultSchema: String, sourcesPath: Path, schemas: List[String] = Nil): IO[MigrateResult] =
+    IO(flywayInstance(defaultSchema, sourcesPath, schemas).migrate())
+
+  def flywayClean(defaultSchema: String, sourcesPath: Path, schemas: List[String] = Nil): IO[CleanResult] =
+    IO(flywayInstance(defaultSchema, sourcesPath, schemas).clean())
 
   def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit = {
     def toCompare(h: HistoryEntry) =
@@ -318,6 +326,108 @@ trait DumboFlywaySpec extends ffstest.FTest {
       IO.println(
         s"${AnsiColor.YELLOW}[$db] Skipping test 'Same behaviour on non-transactional operations' as Flyway can't run the statements in a transaction${AnsiColor.RESET}"
       )
+  }
+
+  // Returns sorted list of (object_type, object_name) for all user objects in a schema
+  def schemaObjects(schema: String): IO[List[(String, String)]] =
+    session().use { s =>
+      for {
+        tables <- s.execute(
+                    sql"""SELECT 'TABLE', c.relname::text
+                          FROM pg_catalog.pg_class c
+                          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                          WHERE c.relkind = 'r' AND n.nspname = ${text}""".query(text ~ text)
+                  )(schema)
+        views  <- s.execute(
+                    sql"""SELECT 'VIEW', c.relname::text
+                          FROM pg_catalog.pg_class c
+                          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                          WHERE c.relkind = 'v' AND n.nspname = ${text}""".query(text ~ text)
+                  )(schema)
+        enums  <- s.execute(
+                    sql"""SELECT 'ENUM', t.typname::text
+                          FROM pg_catalog.pg_type t
+                          JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                          WHERE n.nspname = ${text} AND t.typtype = 'e'""".query(text ~ text)
+                  )(schema)
+        funcs  <- s.execute(
+                    sql"""SELECT 'FUNCTION', p.proname::text
+                          FROM pg_catalog.pg_proc p
+                          JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                          WHERE n.nspname = ${text}
+                            AND NOT EXISTS (
+                              SELECT 1 FROM pg_catalog.pg_depend d
+                              WHERE d.objid = p.oid AND d.deptype = 'e'
+                            )""".query(text ~ text)
+                  )(schema)
+        seqs   <- s.execute(
+                    sql"""SELECT 'SEQUENCE', c.relname::text
+                          FROM pg_catalog.pg_class c
+                          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                          WHERE c.relkind = 'S' AND n.nspname = ${text}""".query(text ~ text)
+                  )(schema)
+      } yield (tables ++ views ++ enums ++ funcs ++ seqs).sorted
+    }
+
+  def schemaExists(schema: String): IO[Boolean] =
+    session().use(
+      _.execute(
+        sql"""SELECT schema_name::text FROM information_schema.schemata WHERE schema_name = ${text}""".query(text)
+      )(schema).map(_.nonEmpty)
+    )
+
+  dbTest("Dumbo clean leaves schema in same state as Flyway clean") {
+    val schema        = "schema_clean_test"
+    val path: Path    = Path("db/test_1")
+    val withResources = dumboWithResources("db/test_1")
+
+    for {
+      // Flyway: migrate then clean
+      _          <- flywayMigrate(schema, path)
+      _          <- flywayClean(schema, path)
+      flywayObjs <- schemaObjects(schema)
+      flywayExists <- schemaExists(schema)
+      _          <- dropSchemas
+      // Dumbo: migrate then clean
+      _          <- dumboMigrate(schema, withResources)
+      _          <- dumboClean(schema, withResources)
+      dumboObjs  <- schemaObjects(schema)
+      dumboExists <- schemaExists(schema)
+      _           = assertEquals(dumboObjs, flywayObjs)
+      _           = assertEquals(dumboExists, flywayExists)
+    } yield ()
+  }
+
+  dbTest("Dumbo clean allows Flyway to re-migrate") {
+    val schema        = "schema_clean_compat"
+    val path: Path    = Path("db/test_1")
+    val withResources = dumboWithResources("db/test_1")
+
+    for {
+      // Dumbo migrate, then Dumbo clean
+      dumboRes  <- dumboMigrate(schema, withResources)
+      _          = assertEquals(dumboRes.migrationsExecuted, 4)
+      _         <- dumboClean(schema, withResources)
+      // Flyway should be able to migrate from scratch after Dumbo clean
+      flywayRes <- flywayMigrate(schema, path)
+      _          = assertEquals(flywayRes.migrationsExecuted, 4)
+    } yield ()
+  }
+
+  dbTest("Flyway clean allows Dumbo to re-migrate") {
+    val schema        = "schema_clean_compat2"
+    val path: Path    = Path("db/test_1")
+    val withResources = dumboWithResources("db/test_1")
+
+    for {
+      // Flyway migrate, then Flyway clean
+      flywayRes <- flywayMigrate(schema, path)
+      _          = assertEquals(flywayRes.migrationsExecuted, 4)
+      _         <- flywayClean(schema, path)
+      // Dumbo should be able to migrate from scratch after Flyway clean
+      dumboRes  <- dumboMigrate(schema, withResources)
+      _          = assertEquals(dumboRes.migrationsExecuted, 4)
+    } yield ()
   }
 
   dbTest("Same behavior on copy") {
