@@ -178,7 +178,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
     val schemas                            = List("schema_1", "schema_2")
     val testConsole                        = new TestLogger
     def hasWarning(l: LogLevel, m: String) =
-      l == LogLevel.Warn && m.contains("""The search_path will be set to 'schema_1, schema_2'""")
+      l == LogLevel.Warn && m.contains("""The search_path will be set to '"schema_1", "schema_2"'""")
     def hasMissingSchemaWarning(l: LogLevel, m: String) =
       m.contains(
         """Following schemas are not included in the search path '"$user", public': schema_1, schema_2"""
@@ -301,8 +301,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _        = assert(history.nonEmpty)
       _       <- dumboClean(schema, dumboWithResources("db/test_1"))
       // after clean, migrating again should re-apply all migrations
-      res2    <- dumboMigrate(schema, dumboWithResources("db/test_1"))
-      _        = assertEquals(res2.migrationsExecuted, res1.migrationsExecuted)
+      res2 <- dumboMigrate(schema, dumboWithResources("db/test_1"))
+      _     = assertEquals(res2.migrationsExecuted, res1.migrationsExecuted)
     } yield ()
   }
 

@@ -338,20 +338,20 @@ trait DumboFlywaySpec extends ffstest.FTest {
                           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                           WHERE c.relkind = 'r' AND n.nspname = ${text}""".query(text ~ text)
                   )(schema)
-        views  <- s.execute(
-                    sql"""SELECT 'VIEW', c.relname::text
+        views <- s.execute(
+                   sql"""SELECT 'VIEW', c.relname::text
                           FROM pg_catalog.pg_class c
                           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                           WHERE c.relkind = 'v' AND n.nspname = ${text}""".query(text ~ text)
-                  )(schema)
-        enums  <- s.execute(
-                    sql"""SELECT 'ENUM', t.typname::text
+                 )(schema)
+        enums <- s.execute(
+                   sql"""SELECT 'ENUM', t.typname::text
                           FROM pg_catalog.pg_type t
                           JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
                           WHERE n.nspname = ${text} AND t.typtype = 'e'""".query(text ~ text)
-                  )(schema)
-        funcs  <- s.execute(
-                    sql"""SELECT 'FUNCTION', p.proname::text
+                 )(schema)
+        funcs <- s.execute(
+                   sql"""SELECT 'FUNCTION', p.proname::text
                           FROM pg_catalog.pg_proc p
                           JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
                           WHERE n.nspname = ${text}
@@ -359,13 +359,13 @@ trait DumboFlywaySpec extends ffstest.FTest {
                               SELECT 1 FROM pg_catalog.pg_depend d
                               WHERE d.objid = p.oid AND d.deptype = 'e'
                             )""".query(text ~ text)
-                  )(schema)
-        seqs   <- s.execute(
-                    sql"""SELECT 'SEQUENCE', c.relname::text
+                 )(schema)
+        seqs <- s.execute(
+                  sql"""SELECT 'SEQUENCE', c.relname::text
                           FROM pg_catalog.pg_class c
                           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                           WHERE c.relkind = 'S' AND n.nspname = ${text}""".query(text ~ text)
-                  )(schema)
+                )(schema)
       } yield (tables ++ views ++ enums ++ funcs ++ seqs).sorted
     }
 
@@ -383,18 +383,18 @@ trait DumboFlywaySpec extends ffstest.FTest {
 
     for {
       // Flyway: migrate then clean
-      _          <- flywayMigrate(schema, path)
-      _          <- flywayClean(schema, path)
-      flywayObjs <- schemaObjects(schema)
+      _            <- flywayMigrate(schema, path)
+      _            <- flywayClean(schema, path)
+      flywayObjs   <- schemaObjects(schema)
       flywayExists <- schemaExists(schema)
-      _          <- dropSchemas
+      _            <- dropSchemas
       // Dumbo: migrate then clean
-      _          <- dumboMigrate(schema, withResources)
-      _          <- dumboClean(schema, withResources)
-      dumboObjs  <- schemaObjects(schema)
+      _           <- dumboMigrate(schema, withResources)
+      _           <- dumboClean(schema, withResources)
+      dumboObjs   <- schemaObjects(schema)
       dumboExists <- schemaExists(schema)
-      _           = assertEquals(dumboObjs, flywayObjs)
-      _           = assertEquals(dumboExists, flywayExists)
+      _            = assertEquals(dumboObjs, flywayObjs)
+      _            = assertEquals(dumboExists, flywayExists)
     } yield ()
   }
 
@@ -405,9 +405,9 @@ trait DumboFlywaySpec extends ffstest.FTest {
 
     for {
       // Dumbo migrate, then Dumbo clean
-      dumboRes  <- dumboMigrate(schema, withResources)
-      _          = assertEquals(dumboRes.migrationsExecuted, 4)
-      _         <- dumboClean(schema, withResources)
+      dumboRes <- dumboMigrate(schema, withResources)
+      _         = assertEquals(dumboRes.migrationsExecuted, 4)
+      _        <- dumboClean(schema, withResources)
       // Flyway should be able to migrate from scratch after Dumbo clean
       flywayRes <- flywayMigrate(schema, path)
       _          = assertEquals(flywayRes.migrationsExecuted, 4)
@@ -425,8 +425,8 @@ trait DumboFlywaySpec extends ffstest.FTest {
       _          = assertEquals(flywayRes.migrationsExecuted, 4)
       _         <- flywayClean(schema, path)
       // Dumbo should be able to migrate from scratch after Flyway clean
-      dumboRes  <- dumboMigrate(schema, withResources)
-      _          = assertEquals(dumboRes.migrationsExecuted, 4)
+      dumboRes <- dumboMigrate(schema, withResources)
+      _         = assertEquals(dumboRes.migrationsExecuted, 4)
     } yield ()
   }
 

@@ -103,7 +103,14 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       validateOnMigrate = validateOnMigrate,
       cleanDisabled = cleanDisabled,
       progressMonitor = Resource
-        .eval(sessionResource.use(s => Dumbo.hasTableLockSupport(s, s"${defaultSchema}.${schemaHistoryTable}")))
+        .eval(
+          sessionResource.use(s =>
+            Dumbo.hasTableLockSupport(
+              s,
+              s"${Dumbo.quoteIdentifier(defaultSchema)}.${Dumbo.quoteIdentifier(schemaHistoryTable)}",
+            )
+          )
+        )
         .flatMap {
           case false => Resource.eval(L.logWarn("Progress monitor is not supported for current database"))
           case true  =>
@@ -117,9 +124,10 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
                         FROM pg_locks l
                         JOIN pg_stat_all_tables t ON t.relid = l.relation
                         JOIN pg_stat_activity ps ON ps.pid = l.pid
-                        WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
+                        WHERE t.schemaname = $text and t.relname = $text"""
                           .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
-                      ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
+                      )(defaultSchema *: schemaHistoryTable *: EmptyTuple)
+                        .map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
                     )
                 )
                 .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
@@ -185,10 +193,10 @@ class Dumbo[F[_]: Sync: Logger](
   import Dumbo.*
 
   private[dumbo] val allSchemas   = combineSchemas(defaultSchema, schemas)
-  private[dumbo] val historyTable = s"${defaultSchema}.${schemaHistoryTable}"
+  private[dumbo] val historyTable = s"${quoteIdentifier(defaultSchema)}.${quoteIdentifier(schemaHistoryTable)}"
   private val dumboHistory        = History(historyTable)
 
-  private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${schema}".command
+  private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${quoteIdentifier(schema)}".command
 
   private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] = {
     val toVersion = source.versionText match {
@@ -495,25 +503,38 @@ class Dumbo[F[_]: Sync: Logger](
     _ <- Logger[F].logInfo(s"Cleaning schemas ${allSchemas.mkString(", ")}")
     // determine which schemas were created by Dumbo (recorded in schema history)
     // if history table doesn't exist, assume no schemas were created by Dumbo
-    schemasCreatedByDumbo <- session.execute(dumboHistory.createdSchemasQuery).map { scripts =>
-                               scripts.flatMap(
-                                 _.split(",").map(_.trim.stripPrefix("\"").stripSuffix("\"")).filter(_.nonEmpty)
-                               ).toSet
-                             }.recover {
-                               case _: skunk.exception.PostgresErrorException => Set.empty[String]
-                             }
-    _ <- allSchemas.traverse_ { schema =>
-           val createdByDumbo = schemasCreatedByDumbo.contains(schema)
-           for {
-             _ <- Logger[F].logInfo(
-                    s"""Cleaning schema "$schema"${if (createdByDumbo) " (will be dropped)" else ""}"""
-                  )
-             _ <- if (createdByDumbo)
-                    session.execute(sql"DROP SCHEMA IF EXISTS #${schema} CASCADE".command).void
-                  else cleanSchema(session, schema)
-           } yield ()
-         }
-    _ <- Logger[F].logInfo(s"Successfully cleaned schemas ${allSchemas.mkString(", ")}")
+    schemasCreatedByDumbo <- session
+                               .execute(dumboHistory.createdSchemasQuery)
+                               .map { scripts =>
+                                 scripts
+                                   .flatMap(
+                                     _.split(",").map(_.trim.stripPrefix("\"").stripSuffix("\"")).filter(_.nonEmpty)
+                                   )
+                                   .toSet
+                               }
+                               .recover { case _: skunk.exception.PostgresErrorException =>
+                                 Set.empty[String]
+                               }
+    results <- allSchemas.traverse { schema =>
+                 val createdByDumbo = schemasCreatedByDumbo.contains(schema)
+                 for {
+                   _ <- Logger[F].logInfo(
+                          s"""Cleaning schema "$schema"${if (createdByDumbo) " (will be dropped)" else ""}"""
+                        )
+                   _ <- if (createdByDumbo)
+                          session.execute(sql"DROP SCHEMA IF EXISTS #${quoteIdentifier(schema)} CASCADE".command).void
+                        else cleanSchema(session, schema)
+                 } yield (schema, createdByDumbo)
+               }
+    _ <- {
+      val dropped = results.collect { case (s, true) => s }
+      val cleaned = results.collect { case (s, false) => s }
+      val parts   = List(
+        Option.when(dropped.nonEmpty)(s"dropped schemas ${dropped.mkString(", ")}"),
+        Option.when(cleaned.nonEmpty)(s"cleaned schemas ${cleaned.mkString(", ")}"),
+      ).flatten
+      Logger[F].logInfo(s"Successfully ${parts.mkString("; ")}")
+    }
   } yield ()
 
   // Drops all objects in the given schema following Flyway's doClean order:
@@ -526,7 +547,11 @@ class Dumbo[F[_]: Sync: Logger](
     def dropAll(objType: String, names: List[String], cascade: Boolean = true): F[Unit] =
       names.traverse_ { name =>
         val cascadeSql = if (cascade) " CASCADE" else ""
-        session.execute(sql"DROP #${objType} IF EXISTS #${schema}.#${name}#${cascadeSql}".command).void
+        session
+          .execute(
+            sql"DROP #${objType} IF EXISTS #${quoteIdentifier(schema)}.#${quoteIdentifier(name)}#${cascadeSql}".command
+          )
+          .void
       }
 
     for {
@@ -534,36 +559,44 @@ class Dumbo[F[_]: Sync: Logger](
       matViews <- queryNames(CatalogQueries.listMaterializedViewsQuery)
       _        <- dropAll("MATERIALIZED VIEW", matViews)
       // 2. Views
-      views    <- queryNames(CatalogQueries.listViewsQuery)
-      _        <- dropAll("VIEW", views)
+      views <- queryNames(CatalogQueries.listViewsQuery)
+      _     <- dropAll("VIEW", views)
       // 3. Tables
-      tables   <- queryNames(CatalogQueries.listTablesQuery)
-      _        <- dropAll("TABLE", tables)
+      tables <- queryNames(CatalogQueries.listTablesQuery)
+      _      <- dropAll("TABLE", tables)
       // 4. Base types (with recreate to break circular deps)
-      types    <- queryNames(CatalogQueries.listBaseTypesQuery)
-      _        <- dropAll("TYPE", types)
-      _        <- types.traverse_(name => session.execute(sql"CREATE TYPE #${schema}.#${name}".command).void)
+      types <- queryNames(CatalogQueries.listBaseTypesQuery)
+      _     <- dropAll("TYPE", types)
+      _     <- types.traverse_(name =>
+             session.execute(sql"CREATE TYPE #${quoteIdentifier(schema)}.#${quoteIdentifier(name)}".command).void
+           )
       // 5. Routines (functions, aggregates, procedures)
-      _        <- cleanRoutines(session, schema)
+      _ <- cleanRoutines(session, schema)
       // 6. Enums
-      enums    <- queryNames(CatalogQueries.listEnumsQuery)
-      _        <- dropAll("TYPE", enums)
+      enums <- queryNames(CatalogQueries.listEnumsQuery)
+      _     <- dropAll("TYPE", enums)
       // 7. Domains
-      domains  <- queryNames(CatalogQueries.listDomainsQuery)
-      _        <- dropAll("DOMAIN", domains)
+      domains <- queryNames(CatalogQueries.listDomainsQuery)
+      _       <- dropAll("DOMAIN", domains)
       // 8. Sequences
-      seqs     <- queryNames(CatalogQueries.listSequencesQuery)
-      _        <- dropAll("SEQUENCE", seqs)
+      seqs <- queryNames(CatalogQueries.listSequencesQuery)
+      _    <- dropAll("SEQUENCE", seqs)
       // 9. Base types (final cleanup, no recreate)
-      types2   <- queryNames(CatalogQueries.listBaseTypesQuery)
-      _        <- dropAll("TYPE", types2)
+      types2 <- queryNames(CatalogQueries.listBaseTypesQuery)
+      _      <- dropAll("TYPE", types2)
     } yield ()
   }
 
   private def cleanRoutines(session: Session[F], schema: String): F[Unit] =
     session.execute(CatalogQueries.listRoutinesQuery)(schema).flatMap { routines =>
       routines.traverse_ { case (kind, signature) =>
-        session.execute(sql"DROP #${kind} IF EXISTS #${schema}.#${signature} CASCADE".command).void
+        val parenIdx             = signature.indexOf('(')
+        val (funcName, argspart) = if (parenIdx >= 0) signature.splitAt(parenIdx) else (signature, "")
+        session
+          .execute(
+            sql"DROP #${kind} IF EXISTS #${quoteIdentifier(schema)}.#${quoteIdentifier(funcName)}#${argspart} CASCADE".command
+          )
+          .void
       }
     }
 
@@ -677,10 +710,14 @@ object Dumbo extends internal.DumboPlatform {
       _     <- fs.readUtf8Lines(p).map(_.foreach(line => crc32.update(line.getBytes(StandardCharsets.UTF_8))))
     } yield crc32.getValue().toInt
 
+  // PostgreSQL identifier quoting: wraps in double quotes, escapes embedded quotes
+  private[dumbo] def quoteIdentifier(id: String): String =
+    "\"" + id.replace("\"", "\"\"") + "\""
+
   // need to ensure that default schema appears first in the list
   private[dumbo] def combineSchemas(defaultSchema: String, schemas: Set[String]) =
     (defaultSchema :: schemas.toList).distinct
 
   private[dumbo] def toSearchPath(defaultSchema: String, schemas: Set[String]) =
-    combineSchemas(defaultSchema, schemas).mkString(", ")
+    combineSchemas(defaultSchema, schemas).map(quoteIdentifier).mkString(", ")
 }
