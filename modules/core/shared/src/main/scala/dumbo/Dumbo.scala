@@ -512,7 +512,7 @@ class Dumbo[F[_]: Sync: Logger](
                                    )
                                    .toSet
                                }
-                               .recover { case _: skunk.exception.PostgresErrorException =>
+                               .recover { case SqlState.UndefinedTable(_) =>
                                  Set.empty[String]
                                }
     results <- allSchemas.traverse { schema =>
@@ -554,6 +554,9 @@ class Dumbo[F[_]: Sync: Logger](
           .void
       }
 
+    def queryBaseTypes: F[List[(String, String)]] =
+      session.execute(CatalogQueries.listBaseTypesQuery)(schema)
+
     for {
       // 1. Materialized views
       matViews <- queryNames(CatalogQueries.listMaterializedViewsQuery)
@@ -564,12 +567,18 @@ class Dumbo[F[_]: Sync: Logger](
       // 3. Tables
       tables <- queryNames(CatalogQueries.listTablesQuery)
       _      <- dropAll("TABLE", tables)
-      // 4. Base types (with recreate to break circular deps)
-      types <- queryNames(CatalogQueries.listBaseTypesQuery)
-      _     <- dropAll("TYPE", types)
-      _     <- types.traverse_(name =>
-             session.execute(sql"CREATE TYPE #${quoteIdentifier(schema)}.#${quoteIdentifier(name)}".command).void
-           )
+      // 4. Base types (with recreate to break type-function circular deps)
+      types <- queryBaseTypes
+      _     <- dropAll("TYPE", types.map(_._1))
+      // Recreate empty shell types only for Pseudo (P) and User-defined (U) categories,
+      // matching Flyway's behavior to allow routine drops that reference these types
+      _ <- types.traverse_ { case (typName, typCategory) =>
+             if (typCategory == "P" || typCategory == "U")
+               session
+                 .execute(sql"CREATE TYPE #${quoteIdentifier(schema)}.#${quoteIdentifier(typName)}".command)
+                 .void
+             else Sync[F].unit
+           }
       // 5. Routines (functions, aggregates, procedures)
       _ <- cleanRoutines(session, schema)
       // 6. Enums
@@ -582,8 +591,8 @@ class Dumbo[F[_]: Sync: Logger](
       seqs <- queryNames(CatalogQueries.listSequencesQuery)
       _    <- dropAll("SEQUENCE", seqs)
       // 9. Base types (final cleanup, no recreate)
-      types2 <- queryNames(CatalogQueries.listBaseTypesQuery)
-      _      <- dropAll("TYPE", types2)
+      types2 <- queryBaseTypes
+      _      <- dropAll("TYPE", types2.map(_._1))
     } yield ()
   }
 

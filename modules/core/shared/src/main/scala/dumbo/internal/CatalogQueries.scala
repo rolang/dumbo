@@ -41,19 +41,24 @@ private[dumbo] object CatalogQueries {
             )"""
       .query(name)
 
-  val listBaseTypesQuery: Query[String, String] =
-    sql"""SELECT t.typname
+  // Matches Flyway's generateDropStatementsForBaseTypes query:
+  // - All non-domain types (typtype != 'd'), including base, composite, pseudo
+  // - Excludes auto-generated array types
+  // - Excludes extension-owned types
+  // Returns (typname, typcategory) — typcategory is used to decide which types to recreate
+  val listBaseTypesQuery: Query[String, (String, String)] =
+    sql"""SELECT t.typname, t.typcategory::text
           FROM pg_catalog.pg_type t
           JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
-          LEFT JOIN pg_catalog.pg_class c ON c.oid = t.typrelid
           WHERE n.nspname = ${name}
-            AND t.typtype = 'b'
-            AND (c.relkind IS NULL OR c.relkind = 'c')
+            AND (t.typrelid = 0 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid))
+            AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+            AND t.typtype != 'd'
             AND NOT EXISTS (
               SELECT 1 FROM pg_catalog.pg_depend d
               WHERE d.objid = t.oid AND d.deptype = 'e'
             )"""
-      .query(name)
+      .query(name ~ text)
 
   // Returns (kind, signature) e.g. ("FUNCTION", "my_func(integer, text)")
   val listRoutinesQuery: Query[String, (String, String)] =
