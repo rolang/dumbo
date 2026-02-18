@@ -104,12 +104,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       cleanDisabled = cleanDisabled,
       progressMonitor = Resource
         .eval(
-          sessionResource.use(s =>
-            Dumbo.hasTableLockSupport(
-              s,
-              s"${Dumbo.quoteIdentifier(defaultSchema)}.${Dumbo.quoteIdentifier(schemaHistoryTable)}",
-            )
-          )
+          sessionResource.use(s => Dumbo.hasTableLockSupport(s, defaultSchema, schemaHistoryTable))
         )
         .flatMap {
           case false => Resource.eval(L.logWarn("Progress monitor is not supported for current database"))
@@ -193,8 +188,8 @@ class Dumbo[F[_]: Sync: Logger](
   import Dumbo.*
 
   private[dumbo] val allSchemas   = combineSchemas(defaultSchema, schemas)
-  private[dumbo] val historyTable = s"${quoteIdentifier(defaultSchema)}.${quoteIdentifier(schemaHistoryTable)}"
-  private val dumboHistory        = History(historyTable)
+  private[dumbo] val historyTable = s"$defaultSchema.$schemaHistoryTable"
+  private val dumboHistory        = History(defaultSchema, schemaHistoryTable)
 
   private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${quoteIdentifier(schema)}".command
 
@@ -272,8 +267,12 @@ class Dumbo[F[_]: Sync: Logger](
           _   <- progressMonitor
         } yield txn).use { _ =>
           for {
-            _ <- if (tableLockSupport) lockTable(session, historyTable).void
-                 else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
+            _ <-
+              if (tableLockSupport) lockTable(session, defaultSchema, schemaHistoryTable).void
+              else
+                session.executeDiscard(
+                  sql"SELECT * FROM #${quoteIdentifier(defaultSchema)}.#${quoteIdentifier(schemaHistoryTable)} FOR UPDATE".command
+                )
             res <- processVersioned(versioned, session, fs).flatMap {
                      case Some((newEntry, files)) => (newEntry, ResourceFiles(files, repeatables)).some.pure[F]
                      case _                       =>
@@ -412,7 +411,7 @@ class Dumbo[F[_]: Sync: Logger](
     _ <- session.execute(dumboHistory.createTableCommand).void.recover {
            case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
          }
-    tableLockSupport <- hasTableLockSupport(session, historyTable)
+    tableLockSupport <- hasTableLockSupport(session, defaultSchema, schemaHistoryTable)
     _                <- schemaRes match {
            case e @ (_ :: _) => session.execute(dumboHistory.insertSchemaEntry)(e.mkString("\"", "\",\"", "\"")).void
            case _            => ().pure[F]
@@ -648,16 +647,18 @@ object Dumbo extends internal.DumboPlatform {
     String.format("%02d:%02d.%03d", pos / 60000, (pos / 1000) % 60, (pos % 1000)) + "s"
   }
 
-  private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F], table: String) =
+  private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F], schema: String, table: String) =
     session.transaction.use(_ =>
-      lockTable(session, table).attempt.map {
+      lockTable(session, schema, table).attempt.map {
         case Right(Completion.LockTable) => true
         case _                           => false
       }
     )
 
-  private def lockTable[F[_]](session: Session[F], table: String) =
-    session.execute(sql"LOCK TABLE #${table} IN ACCESS EXCLUSIVE MODE".command)
+  private def lockTable[F[_]](session: Session[F], schema: String, table: String) =
+    session.execute(
+      sql"LOCK TABLE #${quoteIdentifier(schema)}.#${quoteIdentifier(table)} IN ACCESS EXCLUSIVE MODE".command
+    )
 
   private[dumbo] def listMigrationFiles[F[_]: Sync](
     fs: ResourceReader[F]

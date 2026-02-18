@@ -53,7 +53,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       .single
 
   def loadHistory(schema: String, tableName: String = "flyway_schema_history"): IO[List[HistoryEntry]] =
-    session().use(_.execute(History(s"$schema.$tableName").loadAllQuery))
+    session().use(_.execute(History(schema, tableName).loadAllQuery))
 
   def dumboMigrate(
     defaultSchema: String,
