@@ -53,7 +53,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       .single
 
   def loadHistory(schema: String, tableName: String = "flyway_schema_history"): IO[List[HistoryEntry]] =
-    session().use(_.execute(History(s"$schema.$tableName").loadAllQuery))
+    session().use(_.execute(History(schema, tableName).loadAllQuery))
 
   def dumboMigrate(
     defaultSchema: String,
@@ -111,6 +111,22 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       schemas = schemas.toSet,
     ).runValidationWithHistory
   }
+
+  def dumboClean(
+    defaultSchema: String,
+    withResources: DumboWithResourcesPartiallyApplied[IO],
+    schemas: List[String] = Nil,
+    schemaHistoryTable: String = "flyway_schema_history",
+  )(implicit l: Logger[IO]): IO[Unit] =
+    withResources
+      .apply(
+        connection = connectionConfig,
+        defaultSchema = defaultSchema,
+        schemas = schemas.toSet,
+        schemaHistoryTable = schemaHistoryTable,
+        cleanDisabled = false,
+      )
+      .runClean
 
   def dropSchemas: IO[Unit] = session().use { s =>
     for {

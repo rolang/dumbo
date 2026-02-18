@@ -55,9 +55,11 @@ object HistoryEntry {
     "installed_rank::INT4, version, description, type, script, checksum::INT4, installed_by, installed_on, execution_time::INT4, success"
 }
 
-class History(tableName: String) {
+class History(schema: String, table: String) {
+  private val quotedTableName = s"${Dumbo.quoteIdentifier(schema)}.${Dumbo.quoteIdentifier(table)}"
+
   val createTableCommand: Command[Void] =
-    sql"""CREATE TABLE IF NOT EXISTS #${tableName} (
+    sql"""CREATE TABLE IF NOT EXISTS #${quotedTableName} (
           installed_rank  INT4 NOT NULL PRIMARY KEY,
           version         VARCHAR(50) NULL,
           description     VARCHAR(200) NOT NULL,
@@ -72,36 +74,40 @@ class History(tableName: String) {
 
   val loadAllQuery: Query[Void, HistoryEntry] =
     sql"""SELECT #${HistoryEntry.fieldNames}
-          FROM #${tableName} ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
+          FROM #${quotedTableName} ORDER BY installed_rank ASC""".query(HistoryEntry.codec)
 
   val latestVersionedInstalled: Query[Void, HistoryEntry] =
     sql"""SELECT #${HistoryEntry.fieldNames}
-          FROM #${tableName} WHERE version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1"""
+          FROM #${quotedTableName} WHERE version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1"""
       .query(HistoryEntry.codec)
 
   val latestRepeatablesInstalled: Query[Void, (String, Int)] =
     sql"""SELECT DISTINCT ON (description) description, checksum::INT4
-          FROM #${tableName} WHERE type = 'SQL' AND version IS NULL 
+          FROM #${quotedTableName} WHERE type = 'SQL' AND version IS NULL 
           ORDER BY description ASC, installed_rank DESC"""
       .query(varchar(200) ~ int4)
 
   val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = {
-    val nextRank = sql"(SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM #${tableName})"
+    val nextRank = sql"(SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM #${quotedTableName})"
 
-    sql"""INSERT INTO #${tableName}
+    sql"""INSERT INTO #${quotedTableName}
           (installed_rank, version, description, type, script, checksum, execution_time, success, installed_on, installed_by)
           VALUES ($nextRank, ${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER)
           RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
   }
 
   val updateSQLEntry: Query[HistoryEntry.New *: Int *: EmptyTuple, HistoryEntry] =
-    sql"""UPDATE #${tableName} 
+    sql"""UPDATE #${quotedTableName} 
           SET (version, description, type, script, checksum, execution_time, success, installed_on, installed_by) =
           (${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER) WHERE installed_rank = $int4
           RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
 
+  val createdSchemasQuery: Query[Void, String] =
+    sql"""SELECT script FROM #${quotedTableName} WHERE type = 'SCHEMA' AND installed_rank = 0"""
+      .query(varchar(1000))
+
   val insertSchemaEntry: Command[String] =
-    sql"""INSERT INTO #${tableName}
+    sql"""INSERT INTO #${quotedTableName}
           (installed_rank, description, type, script, execution_time, success, installed_on, installed_by)
           VALUES 
           (0, '<< Flyway Schema Creation >>', 'SCHEMA', ${varchar(1000)}, 0, true, CURRENT_TIMESTAMP, CURRENT_USER)
@@ -109,5 +115,5 @@ class History(tableName: String) {
 }
 
 object History {
-  def apply(tableName: String) = new History(tableName)
+  def apply(schema: String, table: String) = new History(schema, table)
 }

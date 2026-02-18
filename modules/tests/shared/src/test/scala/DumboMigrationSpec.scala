@@ -11,6 +11,7 @@ import cats.implicits.*
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
 import dumbo.logging.LogLevel
 import ffstest.TestLogger
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.codec.all.*
 import skunk.implicits.*
 
@@ -177,7 +178,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
     val schemas                            = List("schema_1", "schema_2")
     val testConsole                        = new TestLogger
     def hasWarning(l: LogLevel, m: String) =
-      l == LogLevel.Warn && m.contains("""The search_path will be set to 'schema_1, schema_2'""")
+      l == LogLevel.Warn && m.contains("""The search_path will be set to '"schema_1", "schema_2"'""")
     def hasMissingSchemaWarning(l: LogLevel, m: String) =
       m.contains(
         """Following schemas are not included in the search path '"$user", public': schema_1, schema_2"""
@@ -288,6 +289,63 @@ trait DumboMigrationSpec extends ffstest.FTest {
             }
       } yield ()
     }
+  }
+
+  dbTest("Clean drops all objects and allows re-migration") {
+    val schema = someSchemaName
+
+    for {
+      res1    <- dumboMigrate(schema, dumboWithResources("db/test_1"))
+      _        = assert(res1.migrationsExecuted > 0)
+      history <- loadHistory(schema)
+      _        = assert(history.nonEmpty)
+      _       <- dumboClean(schema, dumboWithResources("db/test_1"))
+      // after clean, migrating again should re-apply all migrations
+      res2 <- dumboMigrate(schema, dumboWithResources("db/test_1"))
+      _     = assertEquals(res2.migrationsExecuted, res1.migrationsExecuted)
+    } yield ()
+  }
+
+  dbTest("Clean on empty schema is idempotent") {
+    val schema = someSchemaName
+
+    for {
+      _ <- session().use(_.execute(sql"CREATE SCHEMA IF NOT EXISTS #${schema}".command))
+      _ <- dumboClean(schema, dumboWithResources("db/test_1"))
+      // should be able to migrate after cleaning an empty schema
+      res <- dumboMigrate(schema, dumboWithResources("db/test_1"))
+      _    = assert(res.migrationsExecuted > 0)
+    } yield ()
+  }
+
+  dbTest("Clean with multiple schemas") {
+    val schema1 = someSchemaName
+    val schema2 = someSchemaName
+
+    for {
+      _ <- dumboMigrate(schema1, dumboWithResources("db/test_1"), schemas = List(schema1, schema2))
+      _ <- dumboClean(schema1, dumboWithResources("db/test_1"), schemas = List(schema1, schema2))
+      // both schemas should be recreated empty, migration should work again
+      res <- dumboMigrate(schema1, dumboWithResources("db/test_1"), schemas = List(schema1, schema2))
+      _    = assert(res.migrationsExecuted > 0)
+    } yield ()
+  }
+
+  dbTest("Clean fails when cleanDisabled is true") {
+    val schema        = someSchemaName
+    val withResources = dumboWithResources("db/test_1")
+
+    for {
+      result <- withResources
+                  .apply(
+                    connection = connectionConfig,
+                    defaultSchema = schema,
+                  )
+                  .runClean
+                  .attempt
+      _ = assert(result.isLeft)
+      _ = assert(result.left.exists(_.isInstanceOf[exception.DumboCleanException]))
+    } yield ()
   }
 }
 
