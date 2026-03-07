@@ -160,6 +160,25 @@ object ExampleApp extends IOApp.Simple:
       IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
 ```
 
+To clean (drop all objects) in configured schemas, use `runClean`:
+
+```scala
+Dumbo
+  .withResourcesIn[IO]("db/migration")
+  .apply(
+    connection = ConnectionConfig(
+      host = "localhost",
+      port = 5432,
+      user = "root",
+      database = "postgres",
+      password = None,
+      ssl = ConnectionConfig.SSL.None,
+    ),
+    cleanDisabled = false,
+  )
+  .runClean
+```
+
 To run the example, start a Postgres server via docker:
 
 ```shell
@@ -236,7 +255,10 @@ dumboWithResouces.apply(
 
   // compare migration files with applied migrations
   // check e.g. for changed file content/description or missing files before migration
-  validateOnMigrate: Boolean = true
+  validateOnMigrate: Boolean = true,
+
+  // enable/disable the clean command (disabled by default for safety)
+  cleanDisabled: Boolean = true
 )
 
 // migration progress logs can be added optionally in case you'd like dumbo to provide some feedback on longer running queries
@@ -379,6 +401,19 @@ docker run --net="host" \
   migrate
 ```
 
+To clean (drop all objects in configured schemas):
+
+```shell
+docker run --net="host" \
+  -v ./modules/example/src/main/resources/db/migration:/migration \
+  rolang/dumbo:latest-alpine \
+  -user=root \
+  -url=postgresql://localhost:5432/postgres \
+  -location=/migration \
+  -cleanDisabled=false \
+  clean
+```
+
 ### Command-line usage
 
 ```
@@ -391,6 +426,7 @@ dumbo [options] [command]
 | ---------------------- | ----------------------------------------------------------------- |
 | help                   | Print this usage info and exit                                    |
 | migrate                | Migrates the database                                             |
+| clean                  | Drops all objects in the configured schemas                       |
 | validate               | Validates the applied migrations against the ones in the location |
 | version, -v, --version | Print the Dumbo version                                           |
 
@@ -406,6 +442,7 @@ dumbo [options] [command]
 | user              | User to use to connect to the database                                                                    |                         |
 | schemas           | Comma-separated list of the schemas managed by Dumbo. First schema will be used as default schema if set. | `public`                |
 | ssl               | SSL mode to use: `none`, `trusted` or `system`.                                                           | `none`                  |
+| cleanDisabled     | If set to `false`, enables the `clean` command. Clean is disabled by default for safety.                  | `true`                  |
 
 ##### Examples:
 
@@ -416,6 +453,16 @@ dumbo \
   -url=postgresql://localhost:5432/postgres \
   -location=/path/to/db/migration \
   migrate
+```
+
+```shell
+dumbo \
+  -user=postgres \
+  -password="my safe passw0rd" \
+  -url=postgresql://localhost:5432/postgres \
+  -location=/path/to/db/migration \
+  -cleanDisabled=false \
+  clean
 ```
 
 ```shell

@@ -85,6 +85,10 @@ object Dumbo extends IOApp {
                              case None            => Right(None)
                              case Some(Left(err)) => Left(err)
                              case Some(Right(v))  => Right(Some(v))
+      cleanDisabled <- collectConfig(Config.CleanDisabled) match
+                         case None            => Right(None)
+                         case Some(Left(err)) => Left(err)
+                         case Some(Right(v))  => Right(Some(v))
       connection = dumbo.ConnectionConfig(
                      host = host,
                      port = port,
@@ -102,6 +106,7 @@ object Dumbo extends IOApp {
           schemas = schemas,
           schemaHistoryTable = table.getOrElse(defaults.schemaHistoryTable),
           validateOnMigrate = validateOnMigrate.getOrElse(defaults.validateOnMigrate),
+          cleanDisabled = cleanDisabled.getOrElse(defaults.cleanDisabled),
         ),
       connection,
     )
@@ -112,6 +117,11 @@ object Dumbo extends IOApp {
     dumboFromConfigs(options) match
       case Left(value)   => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
       case Right((d, _)) => d.runMigration.as(ExitCode.Success)
+
+  private def runClean(options: List[(Config[?], String)]): IO[ExitCode] =
+    dumboFromConfigs(options) match
+      case Left(value)   => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
+      case Right((d, _)) => d.runClean.as(ExitCode.Success)
 
   private def runValidation(options: List[(Config[?], String)]): IO[ExitCode] =
     dumboFromConfigs(options) match
@@ -133,6 +143,7 @@ object Dumbo extends IOApp {
           case Nil                     => printHelp().as(ExitCode.Success)
           case Command.Help :: Nil     => printHelp().as(ExitCode.Success)
           case Command.Migrate :: Nil  => runMigration(argsResult.configs)
+          case Command.Clean :: Nil    => runClean(argsResult.configs)
           case Command.Validate :: Nil => runValidation(argsResult.configs)
           case Command.Version :: Nil  =>
             Console[IO]

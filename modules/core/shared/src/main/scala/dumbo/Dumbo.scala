@@ -15,8 +15,8 @@ import cats.effect.kernel.Clock
 import cats.effect.std.Console
 import cats.effect.{Async, LiftIO, Resource, Sync, Temporal}
 import cats.implicits.*
-import dumbo.exception.DumboValidationException
-import dumbo.internal.{ResourceReader, Statements}
+import dumbo.exception.{DumboCleanException, DumboValidationException}
+import dumbo.internal.{CatalogQueries, ResourceReader, Statements}
 import dumbo.logging.Logger
 import fs2.Stream
 import fs2.io.file.*
@@ -36,6 +36,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit S: Sync[F], T: Temporal[F], L: Logger[F], C: Console[F], TRC: Tracer[F], N: Network[F]): Dumbo[F] =
     withSession(
       sessionResource = toSessionResource(connection, defaultSchema, schemas),
@@ -43,6 +44,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
       validateOnMigrate = validateOnMigrate,
+      cleanDisabled = cleanDisabled,
     )
 
   def withSession(
@@ -51,6 +53,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit S: Sync[F], L: Logger[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
@@ -59,6 +62,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
       validateOnMigrate = validateOnMigrate,
+      cleanDisabled = cleanDisabled,
     )
 
   def withMigrationStateLogAfter(logMigrationStateAfter: FiniteDuration)(
@@ -67,6 +71,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F]): Dumbo[F] = {
     implicit val network: Network[F] = Network.forLiftIO[F]
     val sessionResource              = toSessionResource(connection, defaultSchema, schemas)
@@ -77,6 +82,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas,
       schemaHistoryTable,
       validateOnMigrate,
+      cleanDisabled,
     )
   }
 
@@ -86,6 +92,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemas: Set[String] = Dumbo.defaults.schemas,
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
+    cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
   )(implicit A: Async[F], L: Logger[F]): Dumbo[F] =
     new Dumbo[F](
       resReader = reader,
@@ -94,8 +101,11 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       schemas = schemas,
       schemaHistoryTable = schemaHistoryTable,
       validateOnMigrate = validateOnMigrate,
+      cleanDisabled = cleanDisabled,
       progressMonitor = Resource
-        .eval(sessionResource.use(s => Dumbo.hasTableLockSupport(s, s"${defaultSchema}.${schemaHistoryTable}")))
+        .eval(
+          sessionResource.use(s => Dumbo.hasTableLockSupport(s, defaultSchema, schemaHistoryTable))
+        )
         .flatMap {
           case false => Resource.eval(L.logWarn("Progress monitor is not supported for current database"))
           case true  =>
@@ -109,9 +119,10 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
                         FROM pg_locks l
                         JOIN pg_stat_all_tables t ON t.relid = l.relation
                         JOIN pg_stat_activity ps ON ps.pid = l.pid
-                        WHERE t.schemaname = '#${defaultSchema}' and t.relname = '#${schemaHistoryTable}'"""
+                        WHERE t.schemaname = $text and t.relname = $text"""
                           .query(int4 *: timestamptz *: timestamptz *: text *: text.opt *: text.opt *: text)
-                      ).map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
+                      )(defaultSchema *: schemaHistoryTable *: EmptyTuple)
+                        .map(_.groupByNel { case pid *: _ => pid }.toList.map(_._2.head))
                     )
                 )
                 .evalMap { case pid *: start *: changed *: state *: eventType *: event *: query *: _ =>
@@ -171,15 +182,16 @@ class Dumbo[F[_]: Sync: Logger](
   schemas: Set[String],
   schemaHistoryTable: String,
   private[dumbo] val validateOnMigrate: Boolean,
+  cleanDisabled: Boolean,
   progressMonitor: Resource[F, Unit] = Resource.unit[F],
 ) {
   import Dumbo.*
 
   private[dumbo] val allSchemas   = combineSchemas(defaultSchema, schemas)
-  private[dumbo] val historyTable = s"${defaultSchema}.${schemaHistoryTable}"
-  private val dumboHistory        = History(historyTable)
+  private[dumbo] val historyTable = s"$defaultSchema.$schemaHistoryTable"
+  private val dumboHistory        = History(defaultSchema, schemaHistoryTable)
 
-  private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${schema}".command
+  private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${quoteIdentifier(schema)}".command
 
   private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] = {
     val toVersion = source.versionText match {
@@ -255,8 +267,12 @@ class Dumbo[F[_]: Sync: Logger](
           _   <- progressMonitor
         } yield txn).use { _ =>
           for {
-            _ <- if (tableLockSupport) lockTable(session, historyTable).void
-                 else session.executeDiscard(sql"SELECT * FROM #${historyTable} FOR UPDATE".command)
+            _ <-
+              if (tableLockSupport) lockTable(session, defaultSchema, schemaHistoryTable).void
+              else
+                session.executeDiscard(
+                  sql"SELECT * FROM #${quoteIdentifier(defaultSchema)}.#${quoteIdentifier(schemaHistoryTable)} FOR UPDATE".command
+                )
             res <- processVersioned(versioned, session, fs).flatMap {
                      case Some((newEntry, files)) => (newEntry, ResourceFiles(files, repeatables)).some.pure[F]
                      case _                       =>
@@ -395,7 +411,7 @@ class Dumbo[F[_]: Sync: Logger](
     _ <- session.execute(dumboHistory.createTableCommand).void.recover {
            case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
          }
-    tableLockSupport <- hasTableLockSupport(session, historyTable)
+    tableLockSupport <- hasTableLockSupport(session, defaultSchema, schemaHistoryTable)
     _                <- schemaRes match {
            case e @ (_ :: _) => session.execute(dumboHistory.insertSchemaEntry)(e.mkString("\"", "\",\"", "\"")).void
            case _            => ().pure[F]
@@ -477,6 +493,121 @@ class Dumbo[F[_]: Sync: Logger](
       .void
   }
 
+  def runClean: F[Unit] =
+    if (cleanDisabled)
+      Sync[F].raiseError(new DumboCleanException("Clean has been disabled. Set cleanDisabled to false to enable it."))
+    else sessionResource.use(cleanBySession)
+
+  private def cleanBySession(session: Session[F]): F[Unit] = for {
+    _ <- Logger[F].logInfo(s"Cleaning schemas ${allSchemas.mkString(", ")}")
+    // determine which schemas were created by Dumbo (recorded in schema history)
+    // if history table doesn't exist, assume no schemas were created by Dumbo
+    schemasCreatedByDumbo <- session
+                               .execute(dumboHistory.createdSchemasQuery)
+                               .map { scripts =>
+                                 scripts
+                                   .flatMap(
+                                     _.split(",").map(_.trim.stripPrefix("\"").stripSuffix("\"")).filter(_.nonEmpty)
+                                   )
+                                   .toSet
+                               }
+                               .recover { case SqlState.UndefinedTable(_) =>
+                                 Set.empty[String]
+                               }
+    results <- allSchemas.traverse { schema =>
+                 val createdByDumbo = schemasCreatedByDumbo.contains(schema)
+                 for {
+                   _ <- Logger[F].logInfo(
+                          s"""Cleaning schema "$schema"${if (createdByDumbo) " (will be dropped)" else ""}"""
+                        )
+                   _ <- if (createdByDumbo)
+                          session.execute(sql"DROP SCHEMA IF EXISTS #${quoteIdentifier(schema)} CASCADE".command).void
+                        else cleanSchema(session, schema)
+                 } yield (schema, createdByDumbo)
+               }
+    _ <- {
+      val dropped = results.collect { case (s, true) => s }
+      val cleaned = results.collect { case (s, false) => s }
+      val parts   = List(
+        Option.when(dropped.nonEmpty)(s"dropped schemas ${dropped.mkString(", ")}"),
+        Option.when(cleaned.nonEmpty)(s"cleaned schemas ${cleaned.mkString(", ")}"),
+      ).flatten
+      Logger[F].logInfo(s"Successfully ${parts.mkString("; ")}")
+    }
+  } yield ()
+
+  // Drops all objects in the given schema following Flyway's doClean order:
+  // materialized views, views, tables, base types (with recreate), routines,
+  // enums, domains, sequences, base types (final cleanup)
+  private def cleanSchema(session: Session[F], schema: String): F[Unit] = {
+    def queryNames(q: Query[String, String]): F[List[String]] =
+      session.execute(q)(schema)
+
+    def dropAll(objType: String, names: List[String], cascade: Boolean = true): F[Unit] =
+      names.traverse_ { name =>
+        val cascadeSql = if (cascade) " CASCADE" else ""
+        session
+          .execute(
+            sql"DROP #${objType} IF EXISTS #${quoteIdentifier(schema)}.#${quoteIdentifier(name)}#${cascadeSql}".command
+          )
+          .void
+      }
+
+    def queryBaseTypes: F[List[(String, String)]] =
+      session.execute(CatalogQueries.listBaseTypesQuery)(schema)
+
+    for {
+      // 1. Materialized views
+      matViews <- queryNames(CatalogQueries.listMaterializedViewsQuery)
+      _        <- dropAll("MATERIALIZED VIEW", matViews)
+      // 2. Views
+      views <- queryNames(CatalogQueries.listViewsQuery)
+      _     <- dropAll("VIEW", views)
+      // 3. Tables
+      tables <- queryNames(CatalogQueries.listTablesQuery)
+      _      <- dropAll("TABLE", tables)
+      // 4. Base types (with recreate to break type-function circular deps)
+      types <- queryBaseTypes
+      _     <- dropAll("TYPE", types.map(_._1))
+      // Recreate empty shell types only for Pseudo (P) and User-defined (U) categories,
+      // matching Flyway's behavior to allow routine drops that reference these types
+      _ <- types.traverse_ { case (typName, typCategory) =>
+             if (typCategory == "P" || typCategory == "U")
+               session
+                 .execute(sql"CREATE TYPE #${quoteIdentifier(schema)}.#${quoteIdentifier(typName)}".command)
+                 .void
+             else Sync[F].unit
+           }
+      // 5. Routines (functions, aggregates, procedures)
+      _ <- cleanRoutines(session, schema)
+      // 6. Enums
+      enums <- queryNames(CatalogQueries.listEnumsQuery)
+      _     <- dropAll("TYPE", enums)
+      // 7. Domains
+      domains <- queryNames(CatalogQueries.listDomainsQuery)
+      _       <- dropAll("DOMAIN", domains)
+      // 8. Sequences
+      seqs <- queryNames(CatalogQueries.listSequencesQuery)
+      _    <- dropAll("SEQUENCE", seqs)
+      // 9. Base types (final cleanup, no recreate)
+      types2 <- queryBaseTypes
+      _      <- dropAll("TYPE", types2.map(_._1))
+    } yield ()
+  }
+
+  private def cleanRoutines(session: Session[F], schema: String): F[Unit] =
+    session.execute(CatalogQueries.listRoutinesQuery)(schema).flatMap { routines =>
+      routines.traverse_ { case (kind, signature) =>
+        val parenIdx             = signature.indexOf('(')
+        val (funcName, argspart) = if (parenIdx >= 0) signature.splitAt(parenIdx) else (signature, "")
+        session
+          .execute(
+            sql"DROP #${kind} IF EXISTS #${quoteIdentifier(schema)}.#${quoteIdentifier(funcName)}#${argspart} CASCADE".command
+          )
+          .void
+      }
+    }
+
   def runValidationWithHistory: F[ValidatedNec[DumboValidationException, Unit]] =
     listMigrationFiles(resReader).flatMap {
       case Valid(resources) =>
@@ -495,6 +626,7 @@ object Dumbo extends internal.DumboPlatform {
     val schemas: Set[String]       = Set.empty[String]
     val schemaHistoryTable: String = "flyway_schema_history"
     val validateOnMigrate: Boolean = true
+    val cleanDisabled: Boolean     = true
     val port: Int                  = 5432
   }
 
@@ -515,16 +647,18 @@ object Dumbo extends internal.DumboPlatform {
     String.format("%02d:%02d.%03d", pos / 60000, (pos / 1000) % 60, (pos % 1000)) + "s"
   }
 
-  private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F], table: String) =
+  private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F], schema: String, table: String) =
     session.transaction.use(_ =>
-      lockTable(session, table).attempt.map {
+      lockTable(session, schema, table).attempt.map {
         case Right(Completion.LockTable) => true
         case _                           => false
       }
     )
 
-  private def lockTable[F[_]](session: Session[F], table: String) =
-    session.execute(sql"LOCK TABLE #${table} IN ACCESS EXCLUSIVE MODE".command)
+  private def lockTable[F[_]](session: Session[F], schema: String, table: String) =
+    session.execute(
+      sql"LOCK TABLE #${quoteIdentifier(schema)}.#${quoteIdentifier(table)} IN ACCESS EXCLUSIVE MODE".command
+    )
 
   private[dumbo] def listMigrationFiles[F[_]: Sync](
     fs: ResourceReader[F]
@@ -586,10 +720,14 @@ object Dumbo extends internal.DumboPlatform {
       _     <- fs.readUtf8Lines(p).map(_.foreach(line => crc32.update(line.getBytes(StandardCharsets.UTF_8))))
     } yield crc32.getValue().toInt
 
+  // PostgreSQL identifier quoting: wraps in double quotes, escapes embedded quotes
+  private[dumbo] def quoteIdentifier(id: String): String =
+    "\"" + id.replace("\"", "\"\"") + "\""
+
   // need to ensure that default schema appears first in the list
   private[dumbo] def combineSchemas(defaultSchema: String, schemas: Set[String]) =
     (defaultSchema :: schemas.toList).distinct
 
   private[dumbo] def toSearchPath(defaultSchema: String, schemas: Set[String]) =
-    combineSchemas(defaultSchema, schemas).mkString(", ")
+    combineSchemas(defaultSchema, schemas).map(quoteIdentifier).mkString(", ")
 }
