@@ -23,13 +23,22 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
-lazy val macOsArm = "macos-latest"
-lazy val macOses  = Seq(macOsArm)
-ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", macOsArm)
+val defautOs = "ubuntu-latest"
+val macOsArm = "macos-latest"
+val macOses  = Seq(macOsArm)
+
+val defaultJavaVersion = JavaSpec.temurin("25")
+val testJavaVersions   = Seq(defaultJavaVersion, JavaSpec.temurin("17"))
+
+val actionGhReleaseVersion        = "v2" // https://github.com/softprops/action-gh-release
+val actionUploadArtifactVersion   = "v7" // https://github.com/actions/upload-artifact
+val actionDownloadArtifactVersion = "v8" // https://github.com/actions/download-artifact
+
+ThisBuild / githubWorkflowOSes := Seq(defautOs, macOsArm)
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
   MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))
 )
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("25"), JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowJavaVersions := testJavaVersions
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
@@ -65,7 +74,7 @@ ThisBuild / githubWorkflowBuild := {
     List("Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll"),
     name = Some("Check scalafix/scalafmt lints"),
     cond = Some(
-      "matrix.java == 'temurin@21' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')"
+      s"matrix.java == '${defaultJavaVersion.render}' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')"
     ),
   ) +: (ThisBuild / githubWorkflowBuild).value
 }
@@ -118,7 +127,7 @@ ThisBuild / githubWorkflowBuild ++= List(
 }
 
 ThisBuild / githubWorkflowBuild += WorkflowStep.Use(
-  ref = UseRef.Public("actions", "upload-artifact", "v4"),
+  ref = UseRef.Public("actions", "upload-artifact", actionUploadArtifactVersion),
   params = Map("name" -> "cli-bin-${{ matrix.os }}", "path" -> "modules/cli/native/target/bin/*"),
   name = Some("Upload command line binaries"),
   cond = Some(s"matrix.project == 'rootNative' && (matrix.scala == '3') && $isTagCond"),
@@ -134,15 +143,16 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
         needs = List("build"),
         cond = Some(isTagCond),
         scalas = Nil,
-        javas = List(JavaSpec.temurin("21")),
+        javas = List(defaultJavaVersion),
+        oses = List(defautOs),
         steps = List(
           WorkflowStep.Use(
-            ref = UseRef.Public("actions", "download-artifact", "v4"),
+            ref = UseRef.Public("actions", "download-artifact", actionDownloadArtifactVersion),
             params = Map("pattern" -> "cli-bin-*", "path" -> "target-cli/bin", "merge-multiple" -> "true"),
             name = Some("Download command line binaries"),
           ),
           WorkflowStep.Use(
-            ref = UseRef.Public("softprops", "action-gh-release", "v1"),
+            ref = UseRef.Public("softprops", "action-gh-release", actionGhReleaseVersion),
             name = Some("Upload release binaries"),
             params = Map("files" -> "target-cli/bin/*"),
           ),
@@ -154,12 +164,13 @@ ThisBuild / githubWorkflowGeneratedCI := (ThisBuild / githubWorkflowGeneratedCI)
         needs = List("build"),
         cond = Some(isTagCond),
         scalas = Nil,
-        javas = List(JavaSpec.temurin("21")),
+        javas = List(defaultJavaVersion),
+        oses = List(defautOs),
         steps = List(
           WorkflowStep.Checkout,
           WorkflowStep.Use(
             name = Some("Download command line linux build"),
-            ref = UseRef.Public("actions", "download-artifact", "v4"),
+            ref = UseRef.Public("actions", "download-artifact", actionDownloadArtifactVersion),
             params = Map("name" -> "target-${{ matrix.os }}-${{ matrix.java }}-3-rootNative"),
           ),
           WorkflowStep.Run(
