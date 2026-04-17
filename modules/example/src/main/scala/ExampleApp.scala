@@ -5,9 +5,12 @@
 import cats.effect.{IO, IOApp}
 import dumbo.logging.Implicits.console
 import dumbo.{ConnectionConfig, Dumbo}
+import org.typelevel.otel4s.metrics.Meter
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
 object ExampleApp extends IOApp.Simple:
+  given Meter[IO] = Meter.noop[IO]
+
   def run = Dumbo
     .withResourcesIn[IO]("db/migration")
     .apply(

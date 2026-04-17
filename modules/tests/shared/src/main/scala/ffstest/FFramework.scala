@@ -17,13 +17,15 @@ import dumbo.exception.DumboValidationException
 import dumbo.logging.{LogLevel, Logger}
 import dumbo.{ConnectionConfig, Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
+import org.typelevel.otel4s.metrics.Meter
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.Session
 import skunk.Session.Credentials
 import skunk.implicits.*
 
 trait FTest extends CatsEffectSuite with FTestPlatform {
-  def postgresPort: Int = 5432
+  implicit val noopMeter: Meter[IO] = Meter.noop[IO]
+  def postgresPort: Int             = 5432
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
