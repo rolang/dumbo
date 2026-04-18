@@ -14,7 +14,7 @@ import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
 
 object Dumbo extends IOApp {
-  implicit val noopMeter: Meter[IO] = Meter.noop[IO]
+  given Meter[IO] = Meter.noop[IO]
 
   private def printHelp(cmd: Option[Command] = None) = {
     val tab = "    "
