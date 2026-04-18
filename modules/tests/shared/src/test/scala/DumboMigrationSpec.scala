@@ -12,6 +12,7 @@ import dumbo.logging.Implicits.consolePrettyWithTimestamp
 import dumbo.logging.LogLevel
 import ffstest.TestLogger
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 import skunk.codec.all.*
 import skunk.implicits.*
 

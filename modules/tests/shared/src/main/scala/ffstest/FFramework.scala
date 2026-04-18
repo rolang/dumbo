@@ -18,6 +18,7 @@ import dumbo.logging.{LogLevel, Logger}
 import dumbo.{ConnectionConfig, Dumbo, DumboWithResourcesPartiallyApplied, History, HistoryEntry}
 import munit.CatsEffectSuite
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 import skunk.Session
 import skunk.Session.Credentials
 import skunk.implicits.*
