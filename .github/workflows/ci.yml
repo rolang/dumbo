@@ -27,7 +27,10 @@ jobs:
     name: Test
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
         scala: [3, 2.13]
         java: [temurin@25, temurin@17]
         project: [rootJVM, rootNative]
@@ -36,6 +39,8 @@ jobs:
             java: temurin@17
           - project: rootNative
             java: temurin@17
+          - os: ubuntu-24.04-arm
+            project: rootJVM
           - os: macos-latest
             project: rootJVM
     runs-on: ${{ matrix.os }}

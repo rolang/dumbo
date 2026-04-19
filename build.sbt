@@ -23,7 +23,9 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
-val defautOs = "ubuntu-latest"
+val defautOs   = "ubuntu-latest"
+val linuxOsArm = "ubuntu-24.04-arm"
+
 val macOsArm = "macos-latest"
 val macOses  = Seq(macOsArm)
 
@@ -34,10 +36,10 @@ val actionGhReleaseVersion        = "v2" // https://github.com/softprops/action-
 val actionUploadArtifactVersion   = "v7" // https://github.com/actions/upload-artifact
 val actionDownloadArtifactVersion = "v8" // https://github.com/actions/download-artifact
 
-ThisBuild / githubWorkflowOSes := Seq(defautOs, macOsArm)
-ThisBuild / githubWorkflowBuildMatrixExclusions ++= macOses.map(os =>
-  MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))
-)
+ThisBuild / githubWorkflowOSes := Seq(defautOs, linuxOsArm, macOsArm)
+ThisBuild / githubWorkflowBuildMatrixExclusions ++= (Seq(
+  MatrixExclude(Map("os" -> linuxOsArm, "project" -> "rootJVM"))
+) ++ macOses.map(os => MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))))
 ThisBuild / githubWorkflowJavaVersions := testJavaVersions
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
