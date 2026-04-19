@@ -4,7 +4,7 @@ lazy val `scala-2.13`     = "2.13.18"
 lazy val `scala-3`        = "3.3.7"
 lazy val `scala-3-latest` = "3.7.4"
 
-ThisBuild / tlBaseVersion      := "0.8"
+ThisBuild / tlBaseVersion      := "0.9"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
@@ -247,11 +247,11 @@ lazy val root = tlCrossRootProject
   .aggregate(core, tests, testsFlyway)
   .settings(commonSettings)
 
-lazy val skunkVersion = "1.0.0-M12"
+lazy val skunkVersion = "1.0.0"
 
-lazy val munitVersion = "1.0.0"
+lazy val munitVersion = "1.2.0"
 
-lazy val munitCEVersion = "2.1.0"
+lazy val munitCEVersion = "2.2.0"
 
 lazy val core = crossProject(JVMPlatform, NativePlatform)
   .crossType(CrossType.Full)
@@ -356,7 +356,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "11.0.0"
+lazy val flywayVersion     = "12.4.0"
 lazy val postgresqlVersion = "42.7.10"
 lazy val testsFlyway       = project
   .in(file("modules/tests-flyway"))
@@ -386,8 +386,8 @@ lazy val example = project
     Compile / headerCheck := Nil,
     scalacOptions -= "-Werror",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "log4cats-slf4j"  % "2.7.1",
-      "ch.qos.logback" % "logback-classic" % "1.5.18",
+      "org.typelevel" %% "log4cats-slf4j"  % "2.8.0",
+      "ch.qos.logback" % "logback-classic" % "1.5.32",
     ),
   )
 
