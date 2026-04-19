@@ -99,7 +99,7 @@ For usage via command line see [command-line](#command-line) section.
 In a sbt project dumbo can be added like:
 
 ```scala
-libraryDependencies += "dev.rolang" %% "dumbo" % "0.8.1"
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.9.0"
 ```
 
 To include snapshot releases, add snapshot resolver:

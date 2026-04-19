@@ -417,7 +417,7 @@ lazy val testLib = project
   )
 
 lazy val generateReadme =
-  taskKey[Unit]("Generate README.md from docs/README.md replacing @VERSION@ and @EXAMPLE: <path>@ placeholders")
+  taskKey[Unit]("Generate README.md from docs/README.md replacing @VERSION@ and @EXAMPLE(<path>) placeholders")
 
 generateReadme := {
   import scala.sys.process._
