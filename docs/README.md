@@ -2,7 +2,7 @@
 
 ![Maven Central Version](https://img.shields.io/maven-central/v/dev.rolang/dumbo_3?label=maven-central)
 ![Maven Snapshot Version](https://img.shields.io/maven-metadata/v?metadataUrl=https:%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fdev%2Frolang%2Fdumbo_3%2Fmaven-metadata.xml&label=maven-snapshots)
-[![dumbo Scala version support](https://index.scala-lang.org/rolang/dumbo/dumbo/latest-by-scala-version.svg?platform=native0.4)](https://index.scala-lang.org/rolang/dumbo/dumbo)
+[![dumbo Scala version support](https://index.scala-lang.org/rolang/dumbo/dumbo/latest-by-scala-version.svg?platform=native0.5)](https://index.scala-lang.org/rolang/dumbo/dumbo)
 [![dumbo Scala version support](https://index.scala-lang.org/rolang/dumbo/dumbo/latest-by-scala-version.svg?platform=jvm)](https://index.scala-lang.org/rolang/dumbo/dumbo)
 
 ![Logo](./docs/assets/logo.png)
