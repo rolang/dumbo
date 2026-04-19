@@ -99,7 +99,7 @@ For usage via command line see [command-line](#command-line) section.
 In a sbt project dumbo can be added like:
 
 ```scala
-libraryDependencies += "dev.rolang" %% "dumbo" % "0.8.1"
+libraryDependencies += "dev.rolang" %% "dumbo" % "@VERSION@"
 ```
 
 To include snapshot releases, add snapshot resolver:
@@ -127,54 +127,13 @@ example
 The migration can be executed like:
 
 ```scala
-import cats.effect.{IO, IOApp}
-import dumbo.logging.Implicits.console
-import dumbo.{ConnectionConfig, Dumbo}
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-import org.typelevel.otel4s.metrics.Meter.Implicits.noop
-
-object ExampleApp extends IOApp.Simple:
-  def run = Dumbo
-    .withResourcesIn[IO]("db/migration")
-    .apply(
-      connection = ConnectionConfig(
-        host = "localhost",
-        port = 5432,
-        user = "root",
-        database = "postgres",
-        password = None,
-        ssl = ConnectionConfig.SSL.None,
-      )
-    )
-    .runMigration
-    .flatMap: result =>
-      IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
+@EXAMPLE(modules/example/src/main/scala/ExampleApp.scala)
 ```
 
 To clean (drop all objects) in configured schemas, use `runClean`:
 
 ```scala
-import cats.effect.{IO, IOApp}
-import dumbo.logging.Implicits.console
-import dumbo.{ConnectionConfig, Dumbo}
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-import org.typelevel.otel4s.metrics.Meter.Implicits.noop
-
-object ExampleClean extends IOApp.Simple:
-  def run = Dumbo
-    .withResourcesIn[IO]("db/migration")
-    .apply(
-      connection = ConnectionConfig(
-        host = "localhost",
-        port = 5432,
-        user = "root",
-        database = "postgres",
-        password = None,
-        ssl = ConnectionConfig.SSL.None,
-      ),
-      cleanDisabled = false,
-    )
-    .runClean
+@EXAMPLE(modules/example/src/main/scala/ExampleClean.scala)
 ```
 
 To run the example, start a Postgres server via docker:
@@ -274,39 +233,7 @@ for custom sessions the search_path will be updated via the SET command if it do
 you may consider adding the search_path to the parameters yourself in that case, dumbo will log it as a warning
 
 ```scala
-import cats.effect.{IO, IOApp}
-import dumbo.logging.Implicits.console
-import dumbo.Dumbo
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-import org.typelevel.otel4s.metrics.Meter.Implicits.noop
-import skunk.Session
-import skunk.Session.Credentials
-
-object ExampleCustomSession extends IOApp.Simple:
-  def run = Dumbo
-    .withResourcesIn[IO]("db/migration")
-    .withSession(
-      sessionResource = Session
-        .Builder[IO]
-        .withHost("localhost")
-        .withPort(5432)
-        .withDatabase("postgres")
-        .withCredentials(Credentials(user = "postgres", password = Some("postgres")))
-        // add schemas to the search path
-        // those are added by default when using a dumbo.ConnectionConfig
-        .withConnectionParameters(
-          Session.DefaultConnectionParameters ++ Map(
-            "search_path" -> "schema_1"
-          )
-        )
-        // a strategy other than BuiltinsOnly should not be required for running migrations
-        .withTypingStrategy(skunk.TypingStrategy.BuiltinsOnly)
-        .single,
-      defaultSchema = "schema_1",
-    )
-    .runMigration
-    .flatMap: result =>
-      IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
+@EXAMPLE(modules/example/src/main/scala/ExampleCustomSession.scala)
 
 ```
 

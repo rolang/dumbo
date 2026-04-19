@@ -9,13 +9,11 @@ import cats.effect.std.Console
 import cats.effect.{ExitCode, IO, IOApp}
 import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
-import org.typelevel.otel4s.metrics.Meter
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
 
 object Dumbo extends IOApp {
-  given Meter[IO] = Meter.noop[IO]
-
   private def printHelp(cmd: Option[Command] = None) = {
     val tab = "    "
 

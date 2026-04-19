@@ -1,12 +1,10 @@
 import cats.effect.{IO, IOApp}
 import dumbo.{ConnectionConfig, Dumbo}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-import org.typelevel.otel4s.metrics.Meter
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 
 object ExampleLog4Cats extends IOApp.Simple:
-  given Meter[IO] = Meter.noop[IO]
-
   def run =
     Slf4jLogger
       .create[IO]

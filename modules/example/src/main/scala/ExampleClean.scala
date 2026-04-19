@@ -4,7 +4,7 @@ import dumbo.{ConnectionConfig, Dumbo}
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 
-object ExampleApp extends IOApp.Simple:
+object ExampleClean extends IOApp.Simple:
   def run = Dumbo
     .withResourcesIn[IO]("db/migration")
     .apply(
@@ -15,8 +15,7 @@ object ExampleApp extends IOApp.Simple:
         database = "postgres",
         password = None,
         ssl = ConnectionConfig.SSL.None,
-      )
+      ),
+      cleanDisabled = false,
     )
-    .runMigration
-    .flatMap: result =>
-      IO.println(s"Migration completed with ${result.migrationsExecuted} migrations")
+    .runClean
