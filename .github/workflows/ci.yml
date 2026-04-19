@@ -41,6 +41,8 @@ jobs:
             java: temurin@17
           - os: ubuntu-24.04-arm
             project: rootJVM
+          - os: ubuntu-24.04-arm
+            scala: 2.13
           - os: macos-latest
             project: rootJVM
     runs-on: ${{ matrix.os }}

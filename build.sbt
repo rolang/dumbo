@@ -38,7 +38,18 @@ val actionDownloadArtifactVersion = "v8" // https://github.com/actions/download-
 
 ThisBuild / githubWorkflowOSes := Seq(defautOs, linuxOsArm, macOsArm)
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= (Seq(
-  MatrixExclude(Map("os" -> linuxOsArm, "project" -> "rootJVM"))
+  MatrixExclude(
+    Map(
+      "os"      -> linuxOsArm,
+      "project" -> "rootJVM",
+    )
+  ),
+  MatrixExclude(
+    Map(
+      "os"    -> linuxOsArm,
+      "scala" -> "2.13",
+    )
+  ),
 ) ++ macOses.map(os => MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))))
 ThisBuild / githubWorkflowJavaVersions := testJavaVersions
 ThisBuild / tlCiHeaderCheck            := true
