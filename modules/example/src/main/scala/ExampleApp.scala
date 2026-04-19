@@ -6,6 +6,7 @@ import cats.effect.{IO, IOApp}
 import dumbo.logging.Implicits.console
 import dumbo.{ConnectionConfig, Dumbo}
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 
 object ExampleApp extends IOApp.Simple:
   def run = Dumbo
