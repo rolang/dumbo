@@ -415,3 +415,34 @@ lazy val testLib = project
     name                                := "sample-lib-test",
     Compile / headerCheck               := Nil,
   )
+
+lazy val generateReadme =
+  taskKey[Unit]("Generate README.md from docs/README.md replacing @VERSION@ and @EXAMPLE(<path>) placeholders")
+
+generateReadme := {
+  import scala.sys.process._
+  import scala.util.matching.Regex
+
+  val latestTag = "git tag -l --sort=-v:refname".!!.linesIterator
+    .map(_.trim)
+    .filter(_.nonEmpty)
+    .find(_ => true)
+    .getOrElse(sys.error("No git tags found"))
+  val version = latestTag.stripPrefix("v")
+
+  def readExample(path: String): String =
+    sbt.IO
+      .read(file(path))
+      .linesIterator
+      .dropWhile(_.startsWith("//> using"))
+      .dropWhile(_.trim.isEmpty)
+      .mkString("\n")
+
+  val examplePattern = """@EXAMPLE\((.+?)\)""".r
+  val template       = sbt.IO.read(file("docs/README.md"))
+  val withVersion    = template.replace("@VERSION@", version)
+  val result         = examplePattern.replaceAllIn(withVersion, m => Regex.quoteReplacement(readExample(m.group(1))))
+
+  sbt.IO.write(file("README.md"), result)
+  streams.value.log.info(s"Generated README.md with version $version")
+}
