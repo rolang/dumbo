@@ -163,10 +163,20 @@ To read migration scripts from embedded resources:
 val dumboWithResouces = Dumbo.withResourcesIn[IO]("db/migration")
 ```
 
-Notes:
+**Notes**:
 
-- In Scala 3 the resource files will be listed / checked at compile time.
-  In case the resource location can't be found in the classpath or multiple locations were found, a compilation error will appear.
+In Scala 3 the resource files will be listed / checked at compile time.  
+In case the resource location can't be found in the classpath or multiple locations were found, a compilation error will appear.
+
+To ensure the resources are always updated during compilation with [sbt](https://www.scala-sbt.org) you may need to add this config:  
+```scala
+(Compile / compile) := ((Compile / compile) dependsOn (Compile / copyResources)).value
+```
+In the [mill](https://mill-build.org) build definition you can add the resources as `compileResources` like  
+```scala
+def compileResources = Task.Sources("src/main/resources")
+```
+
 - For Scala Native ensure to have [embedded resources](https://scala-native.org/en/stable/lib/javalib.html?highlight=resources#embedding-resources) enabled.
 - In Scala 2 the resource location will be checked at runtime
 - In Scala 2 + Native you'll be required to pass a list of resources as we can't list resources from a location at runtime, e.g. like:
