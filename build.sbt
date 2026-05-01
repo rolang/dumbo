@@ -275,6 +275,8 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
+    dependencyOverrides += "org.scalameta" %%% "munit" % munitVersion % Test,
+
     buildInfoPackage := "dumbo",
     buildInfoKeys    := {
       val isNative = crossProjectPlatform.value.identifier == "native"
@@ -350,8 +352,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     publish / skip := true,
     Test / scalacOptions -= "-Werror",
     libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit"             % munitVersion,
-      "org.typelevel" %%% "munit-cats-effect" % munitCEVersion,
+      "org.scalameta" %%% "munit"             % munitVersion   % Test,
+      "org.typelevel" %%% "munit-cats-effect" % munitCEVersion % Test,
     ),
     testFrameworks += new TestFramework("munit.Framework"),
     testOptions += {
