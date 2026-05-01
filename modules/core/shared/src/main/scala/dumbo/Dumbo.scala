@@ -27,6 +27,7 @@ import skunk.*
 import skunk.Session.Credentials
 import skunk.codec.all.*
 import skunk.data.Completion
+import skunk.exception.PostgresErrorException
 import skunk.implicits.*
 import skunk.util.Origin
 
@@ -113,7 +114,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       cleanDisabled = cleanDisabled,
       progressMonitor = Resource
         .eval(
-          sessionResource.use(s => Dumbo.hasTableLockSupport(s, defaultSchema, schemaHistoryTable))
+          sessionResource.use(s => Dumbo.hasTableLockSupport(s))
         )
         .flatMap {
           case false => Resource.eval(L.logWarn("Progress monitor is not supported for current database"))
@@ -264,7 +265,7 @@ class Dumbo[F[_]: Sync: Logger](
   private def migrateToNext(
     session: Session[F],
     fs: ResourceReader[F],
-    tableLockSupport: Boolean,
+    lockSupport: Set[LockSupport],
   )(
     resources: ResourceFiles
   ): F[MigrateToNextResult] =
@@ -277,7 +278,12 @@ class Dumbo[F[_]: Sync: Logger](
         } yield txn).use { _ =>
           for {
             _ <-
-              if (tableLockSupport) lockTable(session, defaultSchema, schemaHistoryTable).void
+              if (lockSupport.contains(LockSupport.TableLock))
+                lockTable(session, defaultSchema, schemaHistoryTable).void
+              else if (lockSupport.contains(LockSupport.XactAdvisoryLock))
+                session.executeDiscard(
+                  sql"SELECT pg_advisory_xact_lock('#${advisoryLockKey(defaultSchema).toString}')".command
+                )
               else
                 session.executeDiscard(
                   sql"SELECT * FROM #${quoteIdentifier(defaultSchema)}.#${quoteIdentifier(schemaHistoryTable)} FOR UPDATE".command
@@ -358,8 +364,6 @@ class Dumbo[F[_]: Sync: Logger](
       case _                             => session.unique(dumboHistory.insertSQLEntry)(newEntry)
     }
 
-  // it's supposed to be prevented by IF NOT EXISTS clause when running concurrently
-  // but it doesn't always seem to prevent it, maybe better to lock another table instead of catching those?
   // https://www.postgresql.org/docs/current/errcodes-appendix.html
   private val duplicateErrorCodes = Set(
     "42710", // duplicate_object
@@ -367,7 +371,16 @@ class Dumbo[F[_]: Sync: Logger](
     "42P07", // duplicate_table
   )
 
-  def runMigration: F[MigrationResult] = sessionResource.use(migrateBySession)
+  // Arbitrary constant identifying Dumbo's advisory lock namespace.
+  private val initAdvisoryLockKey: Int = 5765
+
+  // Combines namespace key with a stable hash of the schema name into a single int8 advisory lock key.
+  private def advisoryLockKey(schema: String): Long =
+    initAdvisoryLockKey.toLong << 32 | (schema.hashCode.toLong & 0xffffffffL)
+
+  def runMigration: F[MigrationResult] = initSession.use { case (sessions, lockSupport) =>
+    migrateByInitializedSession(sessions, lockSupport)
+  }
 
   // search_path needs to include default schema before other schemas
   private def verifySearchPath(sp: String): F[Option[String]] = {
@@ -399,70 +412,97 @@ class Dumbo[F[_]: Sync: Logger](
     }
   }
 
-  private def migrateBySession(session: Session[F]): F[Dumbo.MigrationResult] = for {
-    _ <- session.unique(sql"SHOW search_path".query(text)).flatMap { sp =>
-           verifySearchPath(sp).flatMap {
-             case Some(searchPathUpdate) =>
-               session.execute(sql"SET search_path TO #${searchPathUpdate}".command).void
-             case _ => ().pure[F]
-           }
-         }
-    dbVersion <- session.unique(sql"SELECT version()".query(text))
-    _         <- Logger[F].logInfo(s"Starting migration on $dbVersion")
-    schemaRes <-
-      allSchemas.flatTraverse(schema =>
-        session.execute(initSchemaCmd(schema)).attempt.map {
-          case Right(Completion.CreateSchema)                                                          => List(schema)
-          case Left(e: skunk.exception.PostgresErrorException) if duplicateErrorCodes.contains(e.code) => Nil
-          case _                                                                                       => Nil
+  // acquire a session and initialize the schemas and history table
+  private[dumbo] def initSession = sessionResource.evalMap { session =>
+    for {
+      dbVersion   <- session.unique(sql"SELECT version()".query(text))
+      _           <- Logger[F].logInfo(s"Starting migration on $dbVersion")
+      lockSupport <- detectLockSupport(session)
+      // CockroachDB auto-commits the current transaction before DDL by default
+      // (autocommit_before_ddl = on). Turning it off makes DDL transactional,
+      // which is required for our row-level locking to work correctly.
+      // Silently ignored on PostgreSQL which does not have this setting.
+      _ <- session.executeDiscard(sql"SET autocommit_before_ddl = off".command).attempt.void
+      _ <-
+        session.transaction.use { _ =>
+          for {
+            _ <-
+              (
+                if (lockSupport.contains(LockSupport.XactAdvisoryLock))
+                  session
+                    .executeDiscard(
+                      sql"SELECT pg_advisory_xact_lock('#${initAdvisoryLockKey.toString()}', hashtext('#${defaultSchema}'))".command
+                    )
+                else ().pure[F]
+              )
+            _ <- session.unique(sql"SHOW search_path".query(text)).flatMap { sp =>
+                   verifySearchPath(sp).flatMap {
+                     case Some(searchPathUpdate) =>
+                       session.execute(sql"SET search_path TO #${searchPathUpdate}".command).void
+                     case _ => ().pure[F]
+                   }
+                 }
+            schemaRes <-
+              allSchemas.flatTraverse(schema =>
+                session.execute(initSchemaCmd(schema)).attempt.map {
+                  case Right(Completion.CreateSchema)                                          => List(schema)
+                  case Left(e: PostgresErrorException) if duplicateErrorCodes.contains(e.code) => Nil
+                  case _                                                                       => Nil
+                }
+              )
+            _ <- session.execute(dumboHistory.createTableCommand).void.recover {
+                   case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
+                 }
+            _ <- (if (schemaRes.nonEmpty)
+                    session.execute(dumboHistory.insertSchemaEntry)(schemaRes.mkString("\"", "\",\"", "\"")).void
+                  else ().pure[F])
+          } yield ()
         }
-      )
-    _ <- session.execute(dumboHistory.createTableCommand).void.recover {
-           case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
-         }
-    tableLockSupport <- hasTableLockSupport(session, defaultSchema, schemaHistoryTable)
-    _                <- schemaRes match {
-           case e @ (_ :: _) => session.execute(dumboHistory.insertSchemaEntry)(e.mkString("\"", "\",\"", "\"")).void
-           case _            => ().pure[F]
-         }
+    } yield (session, lockSupport)
+  }
 
-    migrationResult <- for {
-                         resources <- listMigrationFiles(resReader).flatMap {
-                                        case Valid(f)      => f.pure[F]
-                                        case Invalid(errs) =>
-                                          new DumboValidationException(
-                                            s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
-                                          ).raiseError[F, List[ResourceFile]]
-                                      }.map(ResourceFiles.fromResources)
-                         _ <- {
-                           val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
-                           Logger[F].logInfo(s"Found ${resources.length} migration files$inLocation")
-                         }
-                         _               <- if (validateOnMigrate) validationGuard(session, resources) else ().pure[F]
-                         migrationResult <-
-                           Stream
-                             .unfoldEval(resources)(migrateToNext(session, resReader, tableLockSupport))
-                             .compile
-                             .toList
-                             .map(Dumbo.MigrationResult(_))
-                       } yield migrationResult
+  private def migrateByInitializedSession(
+    session: Session[F],
+    lockSupport: Set[LockSupport],
+  ): F[Dumbo.MigrationResult] =
+    for {
+      migrationResult <- for {
+                           resources <- listMigrationFiles(resReader).flatMap {
+                                          case Valid(f)      => f.pure[F]
+                                          case Invalid(errs) =>
+                                            new DumboValidationException(
+                                              s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
+                                            ).raiseError[F, List[ResourceFile]]
+                                        }.map(ResourceFiles.fromResources)
+                           _ <- {
+                             val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
+                             Logger[F].logInfo(s"Found ${resources.length} migration files$inLocation")
+                           }
+                           _               <- if (validateOnMigrate) validationGuard(session, resources) else ().pure[F]
+                           migrationResult <-
+                             Stream
+                               .unfoldEval(resources)(migrateToNext(session, resReader, lockSupport))
+                               .compile
+                               .toList
+                               .map(Dumbo.MigrationResult(_))
+                         } yield migrationResult
 
-    _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse) match {
-           case Nil     => Logger[F].logInfo(s"Schema ${defaultSchema} is up to date. No migration necessary")
-           case history =>
-             val verLog = history.collectFirst { case HistoryEntry(_, Some(v), _, _, _, _, _, _, _, _) => v }
-               .map(v => s", now at version $v")
-               .getOrElse("")
+      _ <- migrationResult.migrations.sorted(Ordering[HistoryEntry].reverse) match {
+             case Nil     => Logger[F].logInfo(s"Schema ${defaultSchema} is up to date. No migration necessary")
+             case history =>
+               val verLog = history.collectFirst { case HistoryEntry(_, Some(v), _, _, _, _, _, _, _, _) => v }
+                 .map(v => s", now at version $v")
+                 .getOrElse("")
 
-             val execMs          = history.foldLeft(0L)(_ + _.executionTimeMs)
-             val execDurationLog = s"(execution time ${formatDuration(execMs)})"
+               val execMs          = history.foldLeft(0L)(_ + _.executionTimeMs)
+               val execDurationLog = s"(execution time ${formatDuration(execMs)})"
 
-             Logger[F]
-               .logInfo(
-                 s"Successfully applied ${migrationResult.migrations.length} migrations$verLog $execDurationLog"
-               )
-         }
-  } yield migrationResult
+               Logger[F]
+                 .logInfo(
+                   s"Successfully applied ${migrationResult.migrations.length} migrations$verLog $execDurationLog"
+                 )
+           }
+    } yield migrationResult
 
   private def validate(
     history: List[HistoryEntry],
@@ -656,12 +696,42 @@ object Dumbo extends internal.DumboPlatform {
     String.format("%02d:%02d.%03d", pos / 60000, (pos / 1000) % 60, (pos % 1000)) + "s"
   }
 
-  private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F], schema: String, table: String) =
+  private[dumbo] sealed trait LockSupport
+  private[dumbo] object LockSupport {
+    case object TableLock        extends LockSupport
+    case object XactAdvisoryLock extends LockSupport
+  }
+
+  private[dumbo] def detectLockSupport[F[_]: Sync](session: Session[F]): F[Set[LockSupport]] =
+    hasTableLockSupport(session).flatMap {
+      case true =>
+        hasXactAdvisoryLockSupport(session).map {
+          case true  => Set(LockSupport.XactAdvisoryLock, LockSupport.TableLock)
+          case false => Set(LockSupport.TableLock)
+        }
+
+      case false =>
+        hasXactAdvisoryLockSupport(session).map {
+          case true  => Set(LockSupport.XactAdvisoryLock)
+          case false => Set.empty
+        }
+    }
+
+  private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F]) =
     session.transaction.use(_ =>
-      lockTable(session, schema, table).attempt.map {
-        case Right(Completion.LockTable) => true
-        case _                           => false
-      }
+      session
+        .execute(sql"LOCK TABLE pg_catalog.pg_class IN ACCESS EXCLUSIVE MODE".command)
+        .attempt
+        .map {
+          case Right(Completion.LockTable) => true
+          case _                           => false
+        }
+    )
+
+  // Probes pg_advisory_xact_lock support by actually calling it in a test transaction.
+  private[dumbo] def hasXactAdvisoryLockSupport[F[_]: Sync](session: Session[F]): F[Boolean] =
+    session.transaction.use(_ =>
+      session.executeDiscard(sql"SELECT pg_advisory_xact_lock(0)".command).attempt.map(_.isRight)
     )
 
   private def lockTable[F[_]](session: Session[F], schema: String, table: String) =

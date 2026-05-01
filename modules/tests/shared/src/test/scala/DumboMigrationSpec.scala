@@ -7,7 +7,9 @@ package dumbo
 import scala.concurrent.duration.*
 
 import cats.data.Validated.Invalid
+import cats.effect.IO
 import cats.implicits.*
+import dumbo.Dumbo.LockSupport
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
 import dumbo.logging.LogLevel
 import ffstest.TestLogger
@@ -25,12 +27,25 @@ trait DumboMigrationSpec extends ffstest.FTest {
     assertEquals(histA.map(toCompare), histB.map(toCompare))
   }
 
-  test("Run multiple migrations concurrently") {
+  test("Execute multiple migrations in parallel") {
     dropSchemas >> (1 to 5).toList.traverse_ { _ =>
-      val schema = someSchemaName
+      val schema        = someSchemaName
+      val withResources = dumboWithResources("db/test_1")
 
       for {
-        res     <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, dumboWithResources("db/test_1")))
+        lockSupport <- session().use(Dumbo.detectLockSupport(_))
+        // in case of missing XactAdvisoryLock support like under CockroachDB run initSession to initialize the schemas and history table beforehand
+        _ <- if (!lockSupport.contains(LockSupport.XactAdvisoryLock)) {
+               withResources
+                 .apply(
+                   connection = connectionConfig,
+                   defaultSchema = schema,
+                   schemas = Set(schema),
+                 )
+                 .initSession
+                 .use_
+             } else IO.unit
+        res     <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, withResources))
         ranks    = res.flatMap(_.migrations.map(_.installedRank)).sorted
         _        = assertEquals(ranks, List(1, 2, 3, 4))
         history <- loadHistory(schema)
