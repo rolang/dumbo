@@ -431,7 +431,7 @@ class Dumbo[F[_]: Sync: Logger](
                 if (lockSupport.contains(LockSupport.XactAdvisoryLock))
                   session
                     .executeDiscard(
-                      sql"SELECT pg_advisory_xact_lock('#${initAdvisoryLockKey.toString()}', hashtext('#${defaultSchema}'))".command
+                      sql"SELECT pg_advisory_xact_lock('#${advisoryLockKey(defaultSchema).toString}')".command
                     )
                 else ().pure[F]
               )
