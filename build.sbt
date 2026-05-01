@@ -4,7 +4,7 @@ lazy val `scala-2.13`     = "2.13.18"
 lazy val `scala-3`        = "3.3.7"
 lazy val `scala-3-latest` = "3.7.4"
 
-ThisBuild / tlBaseVersion      := "0.9"
+ThisBuild / tlBaseVersion      := "0.10"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
 ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
@@ -275,6 +275,8 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
+    dependencyOverrides += "org.scalameta" %%% "munit" % munitVersion % Test,
+
     buildInfoPackage := "dumbo",
     buildInfoKeys    := {
       val isNative = crossProjectPlatform.value.identifier == "native"
@@ -350,8 +352,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     publish / skip := true,
     Test / scalacOptions -= "-Werror",
     libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit"             % munitVersion,
-      "org.typelevel" %%% "munit-cats-effect" % munitCEVersion,
+      "org.scalameta" %%% "munit"             % munitVersion   % Test,
+      "org.typelevel" %%% "munit-cats-effect" % munitCEVersion % Test,
     ),
     testFrameworks += new TestFramework("munit.Framework"),
     testOptions += {
@@ -369,9 +371,11 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion     = "12.4.0"
+lazy val flywayVersion = "12.5.0"
+
 lazy val postgresqlVersion = "42.7.11"
-lazy val testsFlyway       = project
+
+lazy val testsFlyway = project
   .in(file("modules/tests-flyway"))
   .enablePlugins(AutomateHeaderPlugin, NoPublishPlugin)
   .dependsOn(core.jvm, tests.jvm % "compile->compile;test->test")
