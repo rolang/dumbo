@@ -272,7 +272,7 @@ class Dumbo[F[_]: Sync: Logger](
     resources match {
       case ResourceFiles(Nil, Nil)               => none.pure[F]
       case ResourceFiles(versioned, repeatables) =>
-        (for {
+        ((for {
           txn <- session.transaction
           _   <- progressMonitor
         } yield txn).use { _ =>
@@ -298,8 +298,14 @@ class Dumbo[F[_]: Sync: Logger](
                        }
                    }
           } yield res
+        }).recoverWith {
+          // https://www.cockroachlabs.com/docs/v25.2/transaction-retry-error-reference.html
+          case SqlState.SerializationFailure(ex) if ex.message.toLowerCase.contains("restart transaction") =>
+            Logger[F].logWarn(s"Retrying transaction on SerializationFailure: ${ex.message}") >>
+              migrateToNext(session = session, fs = fs, lockSupport = lockSupport)(resources)
         }
     }
+
   private def processVersioned(
     versioned: List[ResourceFileVersioned],
     session: Session[F],
