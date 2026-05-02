@@ -16,6 +16,7 @@ ThisBuild / licenses     := Seq(License.MIT)
 ThisBuild / developers   := List(
   Developer(id = "rolang", name = "Roman Langolf", email = "rolang@pm.me", url = url("https://rolang.dev"))
 )
+ThisBuild / evictionWarningOptions ~= (_.withConfigurations(List(Compile)))
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / description   := "Simple database migration tool for Scala + Postgres"
 ThisBuild / homepage      := Some(url("https://github.com/rolang/dumbo"))
@@ -266,8 +267,6 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "skunk-core" % skunkVersion
     ),
-    dependencyOverrides += "org.scalameta" %%% "munit" % munitVersion % Test,
-
     buildInfoPackage := "dumbo",
     buildInfoKeys    := {
       val isNative = crossProjectPlatform.value.identifier == "native"
