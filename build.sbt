@@ -1,4 +1,3 @@
-import org.typelevel.sbt.gha
 import scala.scalanative.build.*
 
 lazy val `scala-2.13`     = "2.13.18"
