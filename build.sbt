@@ -1,3 +1,4 @@
+import org.typelevel.sbt.gha
 import scala.scalanative.build.*
 
 lazy val `scala-2.13`     = "2.13.18"
@@ -26,8 +27,7 @@ ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix com
 val defautOs   = "ubuntu-latest"
 val linuxOsArm = "ubuntu-24.04-arm"
 
-val macOsArm = "macos-latest"
-val macOses  = Seq(macOsArm)
+val macOs = "macos-latest"
 
 val defaultJavaVersion = JavaSpec.temurin("25")
 val testJavaVersions   = Seq(defaultJavaVersion, JavaSpec.temurin("17"))
@@ -36,21 +36,12 @@ val actionGhReleaseVersion        = "v2" // https://github.com/softprops/action-
 val actionUploadArtifactVersion   = "v7" // https://github.com/actions/upload-artifact
 val actionDownloadArtifactVersion = "v8" // https://github.com/actions/download-artifact
 
-ThisBuild / githubWorkflowOSes := Seq(defautOs, linuxOsArm, macOsArm)
-ThisBuild / githubWorkflowBuildMatrixExclusions ++= (Seq(
-  MatrixExclude(
-    Map(
-      "os"      -> linuxOsArm,
-      "project" -> "rootJVM",
-    )
-  ),
-  MatrixExclude(
-    Map(
-      "os"    -> linuxOsArm,
-      "scala" -> "2.13",
-    )
-  ),
-) ++ macOses.map(os => MatrixExclude(Map("os" -> os, "project" -> "rootJVM"))))
+ThisBuild / githubWorkflowOSes := Seq(defautOs, linuxOsArm, macOs)
+ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
+  MatrixExclude(Map("os" -> linuxOsArm, "project" -> "rootJVM")),
+  MatrixExclude(Map("scala" -> "2.13", "project" -> "rootNative")),
+  MatrixExclude(Map("os" -> macOs, "project" -> "rootJVM")),
+)
 ThisBuild / githubWorkflowJavaVersions := testJavaVersions
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
@@ -70,7 +61,7 @@ ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   )
 )
 ThisBuild / githubWorkflowBuildPreamble ++= List(
-  macOsArm -> "/opt/homebrew/opt"
+  macOs -> "/opt/homebrew/opt"
 ).map { case (os, llvmBase) =>
   WorkflowStep.Run(
     commands = List(
@@ -288,6 +279,10 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     },
   )
   .settings(commonSettings)
+  .nativeSettings(
+    scalaVersion       := `scala-3`,
+    crossScalaVersions := Seq(`scala-3`),
+  )
 
 lazy val cli = crossProject(NativePlatform)
   .crossType(CrossType.Full)
@@ -364,6 +359,8 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   )
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
+    scalaVersion       := `scala-3`,
+    crossScalaVersions := Seq(`scala-3`),
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     nativeConfig ~= {
