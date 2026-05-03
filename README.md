@@ -220,15 +220,6 @@ def compileResources = Task.Sources("src/main/resources")
 
 - For Scala Native ensure to have [embedded resources](https://scala-native.org/en/stable/lib/javalib.html?highlight=resources#embedding-resources) enabled.
 - In Scala 2 the resource location will be checked at runtime
-- In Scala 2 + Native you'll be required to pass a list of resources as we can't list resources from a location at runtime, e.g. like:
-
-```scala
-val dumboWithResouces = Dumbo.withResources(
-  List(
-    ResourceFilePath("/db/migration/V1__test.sql"),
-    ResourceFilePath("/db/migration/V2__test_b.sql"))
-  )
-```
 
 To read migration scripts from the files system use:
 
