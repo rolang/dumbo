@@ -427,8 +427,11 @@ class Dumbo[F[_]: Sync: Logger](
       // CockroachDB auto-commits the current transaction before DDL by default
       // (autocommit_before_ddl = on). Turning it off makes DDL transactional,
       // which is required for our row-level locking to work correctly.
-      // Silently ignored on PostgreSQL which does not have this setting.
-      _ <- session.executeDiscard(sql"SET autocommit_before_ddl = off".command).attempt.void
+      // Only run if the parameter is supported to avoid PostgreSQL error logs.
+      _ <- session.unique(sql"SELECT current_setting('autocommit_before_ddl', true)".query(text.opt)).flatMap {
+             case Some(_) => session.executeDiscard(sql"SET autocommit_before_ddl = off".command).attempt.void
+             case _       => ().pure[F]
+           }
       _ <-
         session.transaction.use { _ =>
           for {
