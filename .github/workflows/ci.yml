@@ -85,14 +85,15 @@ jobs:
       - name: Install native dependencies (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
         run: |
-          /home/linuxbrew/.linuxbrew/bin/brew install llvm@20 s2n utf8proc
-          echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@20/bin" >> $GITHUB_ENV
+          /home/linuxbrew/.linuxbrew/bin/brew update
+          /home/linuxbrew/.linuxbrew/bin/brew install llvm@22 s2n utf8proc
+          echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@22/bin" >> $GITHUB_ENV
 
       - name: Install native dependencies (macos-latest)
         if: (matrix.project == 'rootNative') && matrix.os == 'macos-latest'
         run: |
-          brew install llvm@20 s2n utf8proc
-          echo "LLVM_BIN=/opt/homebrew/opt/llvm@20/bin" >> $GITHUB_ENV
+          brew install llvm@22 s2n utf8proc
+          echo "LLVM_BIN=/opt/homebrew/opt/llvm@22/bin" >> $GITHUB_ENV
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
