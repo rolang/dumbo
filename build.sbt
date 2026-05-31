@@ -46,13 +46,14 @@ ThisBuild / githubWorkflowJavaVersions := testJavaVersions
 ThisBuild / tlCiHeaderCheck            := true
 ThisBuild / tlCiScalafixCheck          := false
 
-lazy val llvmVersion  = "20"
+lazy val llvmVersion  = "22"
 lazy val brewFormulas = Set("s2n", "utf8proc")
 lazy val isTagCond    = "startsWith(github.ref, 'refs/tags/')"
 
 ThisBuild / githubWorkflowBuildPreamble ++= Seq(
   WorkflowStep.Run(
     commands = List(
+      "/home/linuxbrew/.linuxbrew/bin/brew update",
       s"/home/linuxbrew/.linuxbrew/bin/brew install llvm@$llvmVersion ${brewFormulas.mkString(" ")}",
       s"""echo "LLVM_BIN=/home/linuxbrew/.linuxbrew/opt/llvm@$llvmVersion/bin" >> $$GITHUB_ENV""",
     ),
@@ -366,7 +367,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion = "12.5.0"
+lazy val flywayVersion = "12.6.1"
 
 lazy val postgresqlVersion = "42.7.11"
 
