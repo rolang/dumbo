@@ -254,7 +254,7 @@ lazy val root = tlCrossRootProject
 
 lazy val skunkVersion = "1.0.0"
 
-lazy val munitVersion = "1.3.1"
+lazy val munitVersion = "1.3.2"
 
 lazy val munitCEVersion = "2.2.0"
 
