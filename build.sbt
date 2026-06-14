@@ -362,6 +362,10 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     crossScalaVersions := Seq(`scala-3`),
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
+    Test / testOptions ++= {
+      if (sys.env.contains("CI")) Seq(Tests.Argument(TestFrameworks.MUnit, "--exclude-tags=CockroachDbTest"))
+      else Seq.empty
+    },
     nativeConfig ~= {
       _.withEmbedResources(true)
     },
