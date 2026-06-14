@@ -13,6 +13,7 @@ import dumbo.Dumbo.LockSupport
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
 import dumbo.logging.LogLevel
 import ffstest.TestLogger
+import munit.Tag
 import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.codec.all.*
 import skunk.implicits.*
@@ -27,8 +28,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
     assertEquals(histA.map(toCompare), histB.map(toCompare))
   }
 
-  test("Execute multiple migrations in parallel") {
-    dropSchemas >> (1 to 5).toList.traverse_ { _ =>
+  dbTest("Execute multiple migrations in parallel") {
+    (1 to 5).toList.traverse_ { _ =>
       val schema        = someSchemaName
       val withResources = dumboWithResources("db/test_1")
 
@@ -380,7 +381,14 @@ class DumboSpecPostgres11 extends DumboMigrationSpec {
   override val postgresPort: Int = 5434
 }
 
+object TestTags {
+  val CockroachDbTest: Tag = new Tag("CockroachDbTest")
+}
+
 class DumboSpecCockroachDb extends DumboMigrationSpec {
   override val db: Db            = Db.CockroachDb
   override val postgresPort: Int = 5436
+
+  override def dbTest(name: String)(f: => IO[Unit]): Unit =
+    test(name.tag(TestTags.CockroachDbTest))(dropSchemas >> f)
 }
