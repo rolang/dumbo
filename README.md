@@ -391,6 +391,25 @@ curl -L https://github.com/rolang/dumbo/releases/latest/download/dumbo-cli-aarch
 ./dumbo -v
 ```
 
+#### mise
+
+[mise](https://mise.jdx.dev/) can install and manage the dumbo command line across Linux (x86_64 / aarch64) and macOS (arm64) using the [GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html), which downloads the release asset matching your platform.
+
+Install the latest release globally:
+
+```shell
+mise use -g github:rolang/dumbo@latest
+```
+
+Or pin a version per project by adding the following to your `mise.toml`:
+
+```toml
+[tools."github:rolang/dumbo"]
+version = "latest"
+```
+
+The native dependencies ([utf8proc](https://github.com/JuliaStrings/utf8proc) and [s2n-tls](https://github.com/aws/s2n-tls)) are still required (see the Linux and macOS sections above); mise only fetches the dumbo binary.
+
 #### Docker
 
 A docker image with the command line is published to docker hub: [rolang/dumbo](https://hub.docker.com/r/rolang/dumbo).

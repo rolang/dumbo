@@ -330,7 +330,17 @@ buildCliBinary := {
   IO.copyFile(built, destBin)
   sLog.value.info(s"Built cli binary in $destBin")
 
-  IO.zip(Seq((built, "dumbo")), destZip, None)
+  // sbt's IO.zip uses java.util.zip which does not store Unix mode bits, so
+  // the executable bit was lost in the archive and tools like mise extracted
+  // it as 0644. Shell out to the `zip` CLI, which records the file's mode in
+  // the entry's external attributes, so `unzip`/mise restore the exec bit.
+  val staged = (cliNative / target).value / "bin" / "dumbo"
+  IO.copyFile(built, staged)
+  scala.sys.process.Process(Seq("chmod", "+x", staged.getAbsolutePath)).!
+  scala.sys.process
+    .Process(Seq("zip", "-X", "-j", destZip.getAbsolutePath, staged.getAbsolutePath), staged.getParentFile)
+    .!
+  IO.delete(staged)
   sLog.value.info(s"Built cli binary zip in $destZip")
 
   destBin
