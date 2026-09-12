@@ -254,7 +254,7 @@ lazy val root = tlCrossRootProject
 
 lazy val skunkVersion = "1.0.0"
 
-lazy val munitVersion = "1.3.5"
+lazy val munitVersion = "1.3.6"
 
 lazy val munitCEVersion = "2.2.0"
 
@@ -381,7 +381,7 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
     },
   )
 
-lazy val flywayVersion = "13.3.0"
+lazy val flywayVersion = "13.6.0"
 
 lazy val postgresqlVersion = "42.7.13"
 
