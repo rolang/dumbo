@@ -1,13 +1,12 @@
 import scala.scalanative.build.*
 
-lazy val `scala-2.13`     = "2.13.18"
 lazy val `scala-3`        = "3.3.8"
 lazy val `scala-3-latest` = "3.7.4"
 
-ThisBuild / tlBaseVersion      := "0.10"
+ThisBuild / tlBaseVersion      := "0.11"
 ThisBuild / startYear          := Some(2023)
 ThisBuild / scalaVersion       := `scala-3`
-ThisBuild / crossScalaVersions := Seq(`scala-3`, `scala-2.13`)
+ThisBuild / crossScalaVersions := Seq(`scala-3`)
 ThisBuild / tlJdkRelease       := Some(17)
 
 ThisBuild / organization := "dev.rolang"
@@ -39,7 +38,6 @@ val actionDownloadArtifactVersion = "v8" // https://github.com/actions/download-
 ThisBuild / githubWorkflowOSes := Seq(defautOs, linuxOsArm, macOs)
 ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
   MatrixExclude(Map("os" -> linuxOsArm, "project" -> "rootJVM")),
-  MatrixExclude(Map("scala" -> "2.13", "project" -> "rootNative")),
   MatrixExclude(Map("os" -> macOs, "project" -> "rootJVM")),
 )
 ThisBuild / githubWorkflowJavaVersions := testJavaVersions
@@ -230,21 +228,7 @@ lazy val commonSettings = List(
          |""".stripMargin
     )
   ),
-  libraryDependencies ++= {
-    if (scalaVersion.value.startsWith("3"))
-      Seq()
-    else
-      Seq(
-        compilerPlugin(("org.typelevel" %% "kind-projector" % "0.13.4").cross(CrossVersion.full)),
-        compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-      )
-  },
-  Compile / scalacOptions ++= {
-    if (scalaVersion.value.startsWith("3"))
-      Seq("-source:future")
-    else
-      Seq("-Xsource:3")
-  },
+  Compile / scalacOptions += "-source:future",
 )
 
 lazy val root = tlCrossRootProject
@@ -278,10 +262,6 @@ lazy val core = crossProject(JVMPlatform, NativePlatform)
     },
   )
   .settings(commonSettings)
-  .nativeSettings(
-    scalaVersion       := `scala-3`,
-    crossScalaVersions := Seq(`scala-3`),
-  )
 
 lazy val cli = crossProject(NativePlatform)
   .crossType(CrossType.Full)
@@ -368,8 +348,6 @@ lazy val tests = crossProject(JVMPlatform, NativePlatform)
   )
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(
-    scalaVersion       := `scala-3`,
-    crossScalaVersions := Seq(`scala-3`),
     Test / nativeBrewFormulas ++= brewFormulas,
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1"),
     Test / testOptions ++= {
