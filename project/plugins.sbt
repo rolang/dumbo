@@ -4,7 +4,7 @@ addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.5.12")
 
 addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.4.0")
 
-addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.7")
+addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.14.8")
 
 lazy val sbtTlVersion = "0.8.7"
 
