@@ -48,7 +48,8 @@
           dontBuild = true;
           dontStrip = true; # scala-native binaries aren't stdenv-built ELF/Mach-O, avoid re-stripping surprises
 
-          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
+          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ]
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.makeWrapper ];
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.s2n-tls
@@ -65,22 +66,21 @@
           '';
 
           # The macOS release binary is dynamically linked against Homebrew's
-          # absolute install paths (/opt/homebrew/opt/...). Repoint those at
-          # the equivalent nixpkgs outputs. NOTE: untested on real Darwin —
-          # verify the exact dylib basenames/versions match before relying on this.
+          # absolute install paths (/opt/homebrew/opt/...), which don't exist
+          # in the Nix sandbox. It wasn't linked with -headerpad_max_install_names,
+          # so `install_name_tool -change`/`-add_rpath` fail ("larger updated
+          # load commands do not fit") since nixpkgs store paths are longer
+          # than the original Homebrew ones. Rather than rewriting load
+          # commands (which would also invalidate the binary's code
+          # signature), wrap it so dyld falls back to the nixpkgs libs when
+          # the hardcoded Homebrew paths can't be found.
           postFixup = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
-            install_name_tool -change \
-              /opt/homebrew/opt/s2n/lib/libs2n.1.dylib \
-              ${pkgs.s2n-tls}/lib/libs2n.1.dylib \
-              "$out/bin/dumbo"
-            install_name_tool -change \
-              /opt/homebrew/opt/utf8proc/lib/libutf8proc.3.dylib \
-              ${pkgs.utf8proc}/lib/libutf8proc.3.dylib \
-              "$out/bin/dumbo"
-            install_name_tool -change \
-              /opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib \
-              ${pkgs.openssl}/lib/libcrypto.3.dylib \
-              "$out/bin/dumbo"
+            wrapProgram "$out/bin/dumbo" \
+              --set DYLD_FALLBACK_LIBRARY_PATH "${pkgs.lib.makeLibraryPath [
+                pkgs.s2n-tls
+                pkgs.utf8proc
+                pkgs.openssl
+              ]}"
           '';
 
           meta = {
