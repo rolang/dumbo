@@ -13,11 +13,8 @@ final case class ConnectionConfig(
   ssl: ConnectionConfig.SSL = ConnectionConfig.SSL.None,
 )
 
-object ConnectionConfig {
-  sealed trait SSL
-  object SSL {
-    case object None    extends SSL // `SSL` which indicates that SSL is not to be used
-    case object Trusted extends SSL // `SSL` which trusts all certificates
-    case object System  extends SSL // `SSL` from the system default `SSLContext`
-  }
-}
+object ConnectionConfig:
+  enum SSL:
+    case None    // `SSL` which indicates that SSL is not to be used
+    case Trusted // `SSL` which trusts all certificates
+    case System  // `SSL` from the system default `SSLContext`

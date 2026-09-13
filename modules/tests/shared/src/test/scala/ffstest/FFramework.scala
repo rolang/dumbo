@@ -23,17 +23,16 @@ import skunk.Session
 import skunk.Session.Credentials
 import skunk.implicits.*
 
-trait FTest extends CatsEffectSuite with FTestPlatform {
-  implicit val noopMeter: Meter[IO] = Meter.noop[IO]
-  def postgresPort: Int             = 5432
+trait FTest extends CatsEffectSuite with FTestPlatform:
+  given noopMeter: Meter[IO] = Meter.noop[IO]
+  def postgresPort: Int      = 5432
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
   // note: schema name should not start with "pg_" or "crdb_" to avoid conflicts with reserved ones
-  def someSchemaName: String = {
+  def someSchemaName: String =
     val chars = "abcdefghijklmnopqrstuvwxyz"
     LazyList.continually(chars.charAt(Random.nextInt(chars.length))).take(15).mkString
-  }
 
   lazy val connectionConfig: ConnectionConfig = ConnectionConfig(
     host = "localhost",
@@ -64,8 +63,8 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
     logMigrationStateAfter: Duration = Duration.Inf,
-  )(implicit l: Logger[IO]): IO[Dumbo.MigrationResult] =
-    (if (logMigrationStateAfter.isFinite) {
+  )(using l: Logger[IO]): IO[Dumbo.MigrationResult] =
+    (if logMigrationStateAfter.isFinite then {
        withResources.withMigrationStateLogAfter(FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
          connection = connectionConfig,
          defaultSchema = defaultSchema,
@@ -90,7 +89,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     schemas: List[String] = Nil,
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
-  )(implicit l: Logger[IO]): IO[Dumbo.MigrationResult] =
+  )(using l: Logger[IO]): IO[Dumbo.MigrationResult] =
     withResources
       .withSession(
         sessionResource = session,
@@ -105,21 +104,20 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     defaultSchema: String,
     withResources: DumboWithResourcesPartiallyApplied[IO],
     schemas: List[String] = Nil,
-  ): IO[ValidatedNec[DumboValidationException, Unit]] = {
+  ): IO[ValidatedNec[DumboValidationException, Unit]] =
     import dumbo.logging.Implicits.consolePrettyWithTimestamp
     withResources(
       connection = connectionConfig,
       defaultSchema = defaultSchema,
       schemas = schemas.toSet,
     ).runValidationWithHistory
-  }
 
   def dumboClean(
     defaultSchema: String,
     withResources: DumboWithResourcesPartiallyApplied[IO],
     schemas: List[String] = Nil,
     schemaHistoryTable: String = "flyway_schema_history",
-  )(implicit l: Logger[IO]): IO[Unit] =
+  )(using l: Logger[IO]): IO[Unit] =
     withResources
       .apply(
         connection = connectionConfig,
@@ -131,7 +129,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       .runClean
 
   def dropSchemas: IO[Unit] = session().use { s =>
-    for {
+    for
       customSchemas <-
         s.execute(
           sql"""|SELECT schema_name::text
@@ -142,11 +140,12 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       _ <- IO.println(s"Dropping schemas ${customSchemas.mkString(", ")}")
       c <- customSchemas.traverse(schema => s.execute(sql"DROP SCHEMA IF EXISTS #${schema} CASCADE".command))
       _ <- IO.println(s"Schema drop result ${c.mkString(", ")}")
-    } yield ()
+    yield ()
   }
-}
 
-class TestLogger extends Logger[IO] {
+end FTest
+
+class TestLogger extends Logger[IO]:
   private val underlying = Logger.fromConsoleWithTimestamp(console = Console[IO], pretty = true)
 
   val logs: AtomicReference[Vector[(LogLevel, String)]] = new AtomicReference(Vector.empty)
@@ -156,4 +155,3 @@ class TestLogger extends Logger[IO] {
   override def apply(level: LogLevel, message: => String): IO[Unit] = underlying.apply(level, message) *> IO {
     logs.getAndUpdate(_ :+ (level, message))
   }.void
-}

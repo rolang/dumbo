@@ -9,20 +9,19 @@ import cats.effect.std.Console
 import cats.effect.{ExitCode, IO, IOApp}
 import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
+import org.typelevel.otel4s.metrics.Meter.Implicits.noop
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
-object Dumbo extends IOApp {
-  private def printHelp(cmd: Option[Command] = None) = {
+object Dumbo extends IOApp:
+  private def printHelp(cmd: Option[Command] = None) =
     val tab = "    "
 
-    def helpMapStr(m: Map[String, String]) = {
+    def helpMapStr(m: Map[String, String]) =
       val colSize = m.keySet.maxByOption(_.length()).map(_.length()).getOrElse(0) + 3
 
       m.map { case (k, v) => s"${k + Array.fill(colSize - k.length())(" ").mkString}$v" }
         .mkString(tab, s"\n$tab", "\n")
-    }
 
     val usageExample = cmd match
       case None =>
@@ -36,14 +35,13 @@ object Dumbo extends IOApp {
       case None    => s"dumbo help [command]\nCommands\n${helpMapStr(Command.helpMap)}\n"
       case Some(_) => ""
 
-    val configsHelp = {
+    val configsHelp =
       val title = "Configuration parameters (Format: -key=value)"
 
       cmd match
         case None                          => Some(s"\n$title\n${helpMapStr(Config.helpMapAll)}")
         case Some(c) if c.configs.nonEmpty => Some(s"\n$title\n${helpMapStr(Config.helpMap(c.configs))}")
         case _                             => None
-    }
 
     val help =
       s"""|Usage
@@ -53,22 +51,21 @@ object Dumbo extends IOApp {
           |$commandsHelp${configsHelp.getOrElse("")}$usageExample""".stripMargin
 
     Console[IO].println(help)
-  }
 
   private[dumbo] def dumboFromConfigs(
     configs: List[(Config[?], String)]
-  ): Either[String, (dumbo.Dumbo[IO], dumbo.ConnectionConfig)] = {
+  ): Either[String, (dumbo.Dumbo[IO], dumbo.ConnectionConfig)] =
     def collectConfig[T](config: Config[T]): Option[Either[String, T]] =
       configs.collectFirst { case (c, v) if c == config => config.parse(v) }
 
-    for {
+    for
       uri <- collectConfig(Config.Url).toRight("Missing url").flatten
       _   <- Option(uri.getScheme()) match
              case None               => Left(s"Missing scheme in $uri")
              case Some("postgresql") => Right(())
              case Some(invalid)      => Left(s"Unsupported scheme $invalid")
       host     <- Option(uri.getHost()).toRight(s"Missing or invalid hostname in $uri")
-      port      = { val p = uri.getPort(); if (p > -1) p else defaults.port }
+      port      = { val p = uri.getPort(); if p > -1 then p else defaults.port }
       database <- Option(uri.getPath()).flatMap(_.split("/").drop(1).headOption).toRight(s"Missing database in $uri")
       user     <- collectConfig(Config.User).toRight("Missing user").flatten
       password <- collectConfig(Config.Password) match
@@ -98,7 +95,7 @@ object Dumbo extends IOApp {
                      password = password,
                      ssl = ssl,
                    )
-    } yield (
+    yield (
       dumbo.Dumbo
         .withFilesIn[IO](location)
         .apply(
@@ -111,8 +108,6 @@ object Dumbo extends IOApp {
         ),
       connection,
     )
-
-  }
 
   private def runMigration(options: List[(Config[?], String)]): IO[ExitCode] =
     dumboFromConfigs(options) match
@@ -128,12 +123,11 @@ object Dumbo extends IOApp {
     dumboFromConfigs(options) match
       case Left(value)   => Console[IO].errorln(s"Invalid configuration: $value").as(ExitCode.Error)
       case Right((d, _)) =>
-        d.runValidationWithHistory.flatMap {
+        d.runValidationWithHistory.flatMap:
           case Valid(_)   => Console[IO].println("Validation result: ok").as(ExitCode.Success)
           case Invalid(e) =>
             val errs = e.toNonEmptyList.toList.map(_.getMessage())
             Console[IO].errorln(s"Errors on validation: ${errs.mkString("\n", "\n", "")}").as(ExitCode.Success)
-        }
 
   def run(args: List[String]): IO[ExitCode] =
     val argsResult = Arguments.parse(args)
@@ -161,4 +155,5 @@ object Dumbo extends IOApp {
               .as(ExitCode.Error)
 
       case unknowns => Console[IO].errorln(s"Invalid arguments: ${unknowns.mkString(", ")}").as(ExitCode.Error)
-}
+
+end Dumbo
