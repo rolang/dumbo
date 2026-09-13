@@ -4,13 +4,14 @@
 
 package dumbo.internal
 
-import skunk.*
-import skunk.codec.all.*
-import skunk.implicits.*
+import skunk.Query
+import skunk.codec.all.name
+import skunk.codec.all.text
+import skunk.implicits.sql
 
 // Queries for schema object discovery, mirroring Flyway's PostgreSQLSchema.doClean()
 // https://code.yawk.at/org.flywaydb/flyway-core/6.4.0/org/flywaydb/core/internal/database/postgresql/PostgreSQLSchema.java
-private[dumbo] object CatalogQueries {
+private[dumbo] object CatalogQueries:
 
   val listMaterializedViewsQuery: Query[String, String] =
     sql"""SELECT c.relname
@@ -106,4 +107,4 @@ private[dumbo] object CatalogQueries {
           WHERE sequence_schema = ${text}"""
       .query(text)
 
-}
+end CatalogQueries

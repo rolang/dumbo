@@ -18,17 +18,16 @@ import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.codec.all.*
 import skunk.implicits.*
 
-trait DumboMigrationSpec extends ffstest.FTest {
+trait DumboMigrationSpec extends ffstest.FTest:
   def db: Db
 
-  def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit = {
+  def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit =
     def toCompare(h: HistoryEntry) =
       (h.installedRank, h.version, h.script, h.checksum, h.`type`, h.installedBy, h.success)
 
     assertEquals(histA.map(toCompare), histB.map(toCompare))
-  }
 
-  dbTest("Execute multiple migrations in parallel") {
+  dbTest("Execute multiple migrations in parallel"):
     (1 to 5).toList.traverse_ { _ =>
       val schema        = someSchemaName
       val withResources = dumboWithResources("db/test_1")
@@ -36,16 +35,17 @@ trait DumboMigrationSpec extends ffstest.FTest {
       for
         lockSupport <- session().use(Dumbo.detectLockSupport(_))
         // in case of missing XactAdvisoryLock support like under CockroachDB run initSession to initialize the schemas and history table beforehand
-        _ <- if !lockSupport.contains(LockSupport.XactAdvisoryLock) then {
-               withResources
-                 .apply(
-                   connection = connectionConfig,
-                   defaultSchema = schema,
-                   schemas = Set(schema),
-                 )
-                 .initSession
-                 .use_
-             } else IO.unit
+        _ <-
+          if !lockSupport.contains(LockSupport.XactAdvisoryLock) then
+            withResources
+              .apply(
+                connection = connectionConfig,
+                defaultSchema = schema,
+                schemas = Set(schema),
+              )
+              .initSession
+              .use_
+          else IO.unit
         res     <- (1 to 20).toList.parTraverse(_ => dumboMigrate(schema, withResources))
         ranks    = res.flatMap(_.migrations.map(_.installedRank)).sorted
         _        = assertEquals(ranks, List(1, 2, 3, 4))
@@ -53,9 +53,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
         _        = assert(history.length == 5)
       yield ()
     }
-  }
 
-  dbTest("Validate checksum with validation enabled") {
+  dbTest("Validate checksum with validation enabled"):
     val schema = someSchemaName
 
     for
@@ -64,14 +63,12 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _     = assert(res.isLeft)
       _     = assert(res.left.exists(_.getMessage().contains("checksum mismatch")))
       vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_changed_checksum"))
-      _     = vRes match {
+      _     = vRes match
             case Invalid(errs) => assert(errs.toList.exists(_.getMessage().contains("checksum mismatch")))
             case _             => fail("expected failure")
-          }
     yield ()
-  }
 
-  dbTest("Validate description with validation enabled") {
+  dbTest("Validate description with validation enabled"):
     val schema = someSchemaName
 
     for
@@ -85,7 +82,7 @@ trait DumboMigrationSpec extends ffstest.FTest {
               message.contains("test base")
           })
       vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_desc_changed"))
-      _     = vRes match {
+      _     = vRes match
             case Invalid(errs) =>
               assert(errs.exists { err =>
                 val message = err.getMessage()
@@ -94,11 +91,9 @@ trait DumboMigrationSpec extends ffstest.FTest {
                   message.contains("test base")
               })
             case _ => fail("expected failure")
-          }
     yield ()
-  }
 
-  dbTest("Validate for missing files with validation enabled") {
+  dbTest("Validate for missing files with validation enabled"):
     val schema = someSchemaName
 
     for
@@ -108,15 +103,13 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _     = assert(res.left.exists(_.isInstanceOf[dumbo.exception.DumboValidationException]))
       _     = assert(res.left.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
       vRes <- validateWithAppliedMigrations(schema, dumboWithResources("db/test_0_missing_file"))
-      _     = vRes match {
+      _     = vRes match
             case Invalid(errs) =>
               assert(errs.toList.exists(_.getMessage().contains("Detected applied migration not resolved locally")))
             case _ => fail("expected failure")
-          }
     yield ()
-  }
 
-  dbTest("Ignore missing files or missing checksum on validation disabled") {
+  dbTest("Ignore missing files or missing checksum on validation disabled"):
     val schema = someSchemaName
 
     for
@@ -126,9 +119,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       resC <- dumboMigrate(schema, dumboWithResources("db/test_0_desc_changed"), validateOnMigrate = false).attempt
       _     = assert(resA.isRight && resB.isRight && resC.isRight)
     yield ()
-  }
 
-  dbTest("Fail with CopyNotSupportedException") {
+  dbTest("Fail with CopyNotSupportedException"):
     val schema = someSchemaName
 
     for
@@ -137,9 +129,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       dumboResB <- dumboMigrate(schema, dumboWithResources("db/test_copy_to")).attempt
       _          = assert(dumboResB.left.exists(_.isInstanceOf[skunk.exception.CopyNotSupportedException]))
     yield ()
-  }
 
-  dbTest("Fail on non-transactional operations") {
+  dbTest("Fail on non-transactional operations"):
     val withResources = dumboWithResources("db/test_non_transactional")
     val schema        = someSchemaName
 
@@ -147,18 +138,16 @@ trait DumboMigrationSpec extends ffstest.FTest {
       dumboRes <- dumboMigrate(schema, withResources).attempt
       _         = assert(dumboRes.isLeft)
       errLines  = dumboRes.swap.toOption.get.getMessage().linesIterator
-      _         = db match {
+      _         = db match
             case Db.Postgres(11) =>
               assert(errLines.exists(_.matches(".*ALTER TYPE .* cannot run inside a transaction block.*")))
             case Db.Postgres(_) =>
               assert(errLines.exists(_.matches(""".*Unsafe use of new value ".*" of enum type.*""")))
             case Db.CockroachDb =>
               assert(errLines.exists(_.matches(".*enum value is not yet public.")))
-          }
     yield ()
-  }
 
-  dbTest("Fail on non-transactional operations") {
+  dbTest("Fail on non-transactional operations"):
     val withResources = dumboWithResources("db/test_non_transactional")
     val schema        = someSchemaName
 
@@ -166,18 +155,16 @@ trait DumboMigrationSpec extends ffstest.FTest {
       dumboRes <- dumboMigrate(schema, withResources).attempt
       _         = assert(dumboRes.isLeft)
       errLines  = dumboRes.swap.toOption.get.getMessage().linesIterator
-      _         = db match {
+      _         = db match
             case Db.Postgres(11) =>
               assert(errLines.exists(_.matches(".*ALTER TYPE .* cannot run inside a transaction block.*")))
             case Db.Postgres(_) =>
               assert(errLines.exists(_.matches(""".*Unsafe use of new value ".*" of enum type.*""")))
             case Db.CockroachDb =>
               assert(errLines.exists(_.matches(".*enum value is not yet public.")))
-          }
     yield ()
-  }
 
-  dbTest("schemas are included in the search path") {
+  dbTest("schemas are included in the search path"):
     val withResources = dumboWithResources("db/test_search_path")
     val schemas       = List("schema_1", "schema_2")
 
@@ -187,9 +174,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       history  <- loadHistory(schemas.head)
       _         = assert(history.length != 2)
     yield ()
-  }
 
-  dbTest("warn if schemas are not included in the search path for custom sessions") {
+  dbTest("warn if schemas are not included in the search path for custom sessions"):
     val withResources                      = dumboWithResources("db/test_search_path")
     val schemas                            = List("schema_1", "schema_2")
     val testConsole                        = new TestLogger
@@ -224,9 +210,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _          = assert(dumboResC.isRight)
       _          = assert(!testConsole.logs.get().exists(t => hasWarning(t._1, t._2)))
     yield ()
-  }
 
-  dbTest("migrate by different schema using custom session") {
+  dbTest("migrate by different schema using custom session"):
     val withResources = dumboWithResources("db/test_1")
     val schemaA       = "test_a"
     val schemaB       = "test_b"
@@ -237,9 +222,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _          = assertEquals(resDumboA.migrationsExecuted, 4)
       _          = assertEquals(resDumboB.migrationsExecuted, 4)
     yield ()
-  }
 
-  dbTest("default schema is used when no schema is specified in migration sripts") {
+  dbTest("default schema is used when no schema is specified in migration sripts"):
     val withResources = dumboWithResources("db/test_default_schema")
 
     (1 to 5).toList.traverse_ { _ =>
@@ -277,37 +261,32 @@ trait DumboMigrationSpec extends ffstest.FTest {
         _ <- assertDefaultSchemaHasTable
       yield ()
     }
-  }
 
-  {
+  locally:
     val withResources                             = dumboWithResources("db/test_long_running")
     def logMatch(l: LogLevel, s: String): Boolean = l == LogLevel.Info && s.startsWith("Awaiting query with pid")
 
-    dbTest("don't log on waiting for lock release if under provided duration") {
+    dbTest("don't log on waiting for lock release if under provided duration"):
       val testLogger = new TestLogger()
       for
         _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 5.second)(using testLogger)
         _  = assert(testLogger.logs.get().count(t => logMatch(t._1, t._2)) == 0)
       yield ()
-    }
 
-    dbTest("log on waiting for lock release longer than provided duration") {
+    dbTest("log on waiting for lock release longer than provided duration"):
       val testLogger = new TestLogger()
 
       for
         _ <- dumboMigrate("schema_1", withResources, logMigrationStateAfter = 800.millis)(using testLogger)
-        _  = db match {
+        _  = db match
               case Db.Postgres(_) => assert(testLogger.logs.get().count(t => logMatch(t._1, t._2)) >= 2)
               case Db.CockroachDb =>
                 assert(testLogger.logs.get().count { case (level, message) =>
                   level == LogLevel.Warn && message.startsWith("Progress monitor is not supported")
                 } == 1)
-            }
       yield ()
-    }
-  }
 
-  dbTest("Clean drops all objects and allows re-migration") {
+  dbTest("Clean drops all objects and allows re-migration"):
     val schema = someSchemaName
 
     for
@@ -320,9 +299,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       res2 <- dumboMigrate(schema, dumboWithResources("db/test_1"))
       _     = assertEquals(res2.migrationsExecuted, res1.migrationsExecuted)
     yield ()
-  }
 
-  dbTest("Clean on empty schema is idempotent") {
+  dbTest("Clean on empty schema is idempotent"):
     val schema = someSchemaName
 
     for
@@ -332,9 +310,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       res <- dumboMigrate(schema, dumboWithResources("db/test_1"))
       _    = assert(res.migrationsExecuted > 0)
     yield ()
-  }
 
-  dbTest("Clean with multiple schemas") {
+  dbTest("Clean with multiple schemas"):
     val schema1 = someSchemaName
     val schema2 = someSchemaName
 
@@ -345,9 +322,8 @@ trait DumboMigrationSpec extends ffstest.FTest {
       res <- dumboMigrate(schema1, dumboWithResources("db/test_1"), schemas = List(schema1, schema2))
       _    = assert(res.migrationsExecuted > 0)
     yield ()
-  }
 
-  dbTest("Clean fails when cleanDisabled is true") {
+  dbTest("Clean fails when cleanDisabled is true"):
     val schema        = someSchemaName
     val withResources = dumboWithResources("db/test_1")
 
@@ -362,32 +338,27 @@ trait DumboMigrationSpec extends ffstest.FTest {
       _ = assert(result.isLeft)
       _ = assert(result.left.exists(_.isInstanceOf[exception.DumboCleanException]))
     yield ()
-  }
-}
 
-enum Db {
+end DumboMigrationSpec
+
+enum Db:
   case Postgres(version: Int)
   case CockroachDb
-}
 
-class DumboSpecPostgresLatest extends DumboMigrationSpec {
+class DumboSpecPostgresLatest extends DumboMigrationSpec:
   override val db: Db            = Db.Postgres(17)
   override val postgresPort: Int = 5432
-}
 
-class DumboSpecPostgres11 extends DumboMigrationSpec {
+class DumboSpecPostgres11 extends DumboMigrationSpec:
   override val db: Db            = Db.Postgres(11)
   override val postgresPort: Int = 5434
-}
 
-object TestTags {
+object TestTags:
   val CockroachDbTest: Tag = new Tag("CockroachDbTest")
-}
 
-class DumboSpecCockroachDb extends DumboMigrationSpec {
+class DumboSpecCockroachDb extends DumboMigrationSpec:
   override val db: Db            = Db.CockroachDb
   override val postgresPort: Int = 5436
 
   override def dbTest(name: String)(f: => IO[Unit]): Unit =
     test(name.tag(TestTags.CockroachDbTest))(dropSchemas >> f)
-}

@@ -6,8 +6,8 @@ package dumbo
 
 import cats.data.NonEmptyList
 
-class ResourceFileDescriptionSpec extends ffstest.FTest {
-  test("extract source file version from file path") {
+class ResourceFileDescriptionSpec extends ffstest.FTest:
+  test("extract source file version from file path"):
     val fileNames = List(
       "R__c_view.sql",
       "R__a_view.sql",
@@ -52,9 +52,8 @@ class ResourceFileDescriptionSpec extends ffstest.FTest {
     )
 
     assertEquals(versions.sorted.map(_.version), expected)
-  }
 
-  test("distinct by version") {
+  test("distinct by version"):
     val fileNames = List(
       "V1__test.sql",
       "V01__test.sql",
@@ -67,14 +66,13 @@ class ResourceFileDescriptionSpec extends ffstest.FTest {
       .map(s => ResourceFileDescription.fromResourcePath(ResourceFilePath(s)))
       .collect { case Right(r) => r }
 
-    val versionsDistinct = versions.distinct.collect {
+    val versionsDistinct = versions.distinct.collect:
       case ResourceFileDescription(v: ResourceVersion.Versioned, _, _) => v
-    }
     val versionsSet = versions.collect { case ResourceFileDescription(v: ResourceVersion.Versioned, _, _) => v }.toSet
 
     assertEquals(versions.length, 5)
 
     assertEquals(versionsDistinct.map(_.parts.head), List(1L))
     assertEquals(versionsSet.map(_.parts.head), Set(1L))
-  }
-}
+
+end ResourceFileDescriptionSpec

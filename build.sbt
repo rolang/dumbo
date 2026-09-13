@@ -224,7 +224,7 @@ lazy val commonSettings = List(
          |""".stripMargin
     )
   ),
-  Compile / scalacOptions += "-source:future",
+  Compile / scalacOptions ++= (Seq("-source:future") ++ sys.env.get("CI").map(_ => Seq("-Werror")).getOrElse(Nil)),
 )
 
 lazy val root = tlCrossRootProject

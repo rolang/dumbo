@@ -31,7 +31,7 @@ import skunk.exception.PostgresErrorException
 import skunk.implicits.*
 import skunk.util.Origin
 
-final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) {
+final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]):
   def apply(
     connection: ConnectionConfig,
     defaultSchema: String = Dumbo.defaults.defaultSchema,
@@ -82,7 +82,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     schemaHistoryTable: String = Dumbo.defaults.schemaHistoryTable,
     validateOnMigrate: Boolean = Dumbo.defaults.validateOnMigrate,
     cleanDisabled: Boolean = Dumbo.defaults.cleanDisabled,
-  )(using A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F], MTR: Meter[F]): Dumbo[F] = {
+  )(using A: Async[F], L: Logger[F], LIO: LiftIO[F], C: Console[F], TRC: Tracer[F], MTR: Meter[F]): Dumbo[F] =
     given Network[F]    = Network.forLiftIO[F]
     val sessionResource = toSessionResource(connection, defaultSchema, schemas)
 
@@ -94,7 +94,6 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       validateOnMigrate,
       cleanDisabled,
     )
-  }
 
   def withMigrationStateLogAfterBySession(logMigrationStateAfter: FiniteDuration)(
     sessionResource: Resource[F, Session[F]],
@@ -164,7 +163,7 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
     connection: ConnectionConfig,
     defaultSchema: String,
     schemas: Set[String],
-  )(using T: Temporal[F], C: Console[F], TRC: Tracer[F], MTR: Meter[F], N: Network[F]) = {
+  )(using T: Temporal[F], C: Console[F], TRC: Tracer[F], MTR: Meter[F], N: Network[F]) =
     val searchPath = Dumbo.toSearchPath(defaultSchema, schemas)
     val params     = Session.DefaultConnectionParameters ++ Map("search_path" -> searchPath)
 
@@ -182,8 +181,8 @@ final class DumboWithResourcesPartiallyApplied[F[_]](reader: ResourceReader[F]) 
       })
       .withConnectionParameters(params)
       .single
-  }
-}
+
+end DumboWithResourcesPartiallyApplied
 
 class Dumbo[F[_]: {Sync, Logger}](
   private[dumbo] val resReader: ResourceReader[F],
@@ -194,7 +193,7 @@ class Dumbo[F[_]: {Sync, Logger}](
   private[dumbo] val validateOnMigrate: Boolean,
   cleanDisabled: Boolean,
   progressMonitor: Resource[F, Unit] = Resource.unit[F],
-) {
+):
   import Dumbo.*
 
   private[dumbo] val allSchemas   = combineSchemas(defaultSchema, schemas)
@@ -203,11 +202,10 @@ class Dumbo[F[_]: {Sync, Logger}](
 
   private def initSchemaCmd(schema: String) = sql"CREATE SCHEMA IF NOT EXISTS #${quoteIdentifier(schema)}".command
 
-  private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] = {
-    val toVersion = source.versionText match {
+  private def transact(source: ResourceFile, fs: ResourceReader[F], session: Session[F]): F[HistoryEntry.New] =
+    val toVersion = source.versionText match
       case Some(v) => s"to version $v - \"${source.scriptDescription}\""
       case _       => s"with repeatable migration \"${source.scriptDescription}\""
-    }
 
     for
       _ <-
@@ -224,7 +222,7 @@ class Dumbo[F[_]: {Sync, Logger}](
                       if source.executeInTransaction then Vector(sql) else Statements.intoSingleStatements(sql)
                     }
 
-      (duration, _) <- Clock[F].timed {
+      (duration, _) <- Clock[F].timed:
                          statements
                            .map(statementSql =>
                              new Statement[Void] {
@@ -236,7 +234,6 @@ class Dumbo[F[_]: {Sync, Logger}](
                              }
                            )
                            .traverse_(session.executeDiscard(_))
-                       }
       _ <- Logger[F].logInfo(s"Migration $toVersion completed in ${duration.toMillis}ms")
     yield HistoryEntry.New(
       version = source.versionText,
@@ -247,20 +244,18 @@ class Dumbo[F[_]: {Sync, Logger}](
       executionTimeMs = duration.toMillis.toInt,
       success = true,
     )
-  }
 
   private def validationGuard(session: Session[F], resources: ResourceFiles) =
-    if resources.nonEmpty then {
+    if resources.nonEmpty then
       session
         .execute(dumboHistory.loadAllQuery)
         .map(history => validate(history, resources))
-        .flatMap {
+        .flatMap:
           case Valid(_)   => ().pure[F]
           case Invalid(e) =>
             new DumboValidationException(s"Error on validation:\n${e.toList.map(_.getMessage).mkString("\n")}")
               .raiseError[F, Unit]
-        }
-    } else ().pure[F]
+    else ().pure[F]
 
   private def migrateToNext(
     session: Session[F],
@@ -269,7 +264,7 @@ class Dumbo[F[_]: {Sync, Logger}](
   )(
     resources: ResourceFiles
   ): F[MigrateToNextResult] =
-    resources match {
+    resources match
       case ResourceFiles(Nil, Nil)               => none.pure[F]
       case ResourceFiles(versioned, repeatables) =>
         ((for
@@ -298,13 +293,11 @@ class Dumbo[F[_]: {Sync, Logger}](
                        }
                    }
           yield res
-        }).recoverWith {
+        }).recoverWith:
           // https://www.cockroachlabs.com/docs/v25.2/transaction-retry-error-reference.html
           case SqlState.SerializationFailure(ex) if ex.message.toLowerCase.contains("restart transaction") =>
             Logger[F].logWarn(s"Retrying transaction on SerializationFailure: ${ex.message}") >>
               migrateToNext(session = session, fs = fs, lockSupport = lockSupport)(resources)
-        }
-    }
 
   private def processVersioned(
     versioned: List[ResourceFileVersioned],
@@ -316,13 +309,12 @@ class Dumbo[F[_]: {Sync, Logger}](
       latestInstalled <- session.option(dumboHistory.latestVersionedInstalled)
       latestInstalledV = latestInstalled.map(l => (l.resourceVersion, l.success))
       result          <- versioned.dropWhile { case (v, _) =>
-                  latestInstalledV match {
+                  latestInstalledV match
                     // drop versions applied successfully
                     // retry the version which was not applied successfully
                     case Some((Some(lv), success)) => if success then v <= lv else v < lv
                     case _                         => false
-                  }
-                } match {
+                } match
                   case (_, x) :: xs =>
                     // acquire a new session for non-transactional operation
                     val transactSession: Resource[F, Session[F]] =
@@ -334,7 +326,6 @@ class Dumbo[F[_]: {Sync, Logger}](
                         .map((_, xs).some)
                     }
                   case _ => none.pure[F]
-                }
     yield result
 
   private def processRepeatables(
@@ -346,11 +337,10 @@ class Dumbo[F[_]: {Sync, Logger}](
     for
       latestRepeatables <- session.execute(dumboHistory.latestRepeatablesInstalled).map(_.toMap)
       res               <- repeatables.filter { case (_, f) =>
-               latestRepeatables.get(f.scriptDescription) match {
+               latestRepeatables.get(f.scriptDescription) match
                  case Some(checksum) => checksum != f.checksum
                  case _              => true
-               }
-             } match {
+             } match
                case (_, x) :: xs =>
                  // acquire a new session for non-transactional operation
                  val transactSession: Resource[F, Session[F]] =
@@ -360,14 +350,12 @@ class Dumbo[F[_]: {Sync, Logger}](
                    transact(x, fs, s).flatMap(updateHistory(None, s)).map((_, xs).some)
                  }
                case Nil => none.pure[F]
-             }
     yield res
 
   private def updateHistory(latestInstalled: Option[HistoryEntry], session: Session[F])(newEntry: HistoryEntry.New) =
-    latestInstalled match {
+    latestInstalled match
       case Some(value) if !value.success => session.unique(dumboHistory.updateSQLEntry)(newEntry -> value.installedRank)
       case _                             => session.unique(dumboHistory.insertSQLEntry)(newEntry)
-    }
 
   // https://www.postgresql.org/docs/current/errcodes-appendix.html
   private val duplicateErrorCodes = Set(
@@ -388,25 +376,23 @@ class Dumbo[F[_]: {Sync, Logger}](
   }
 
   // search_path needs to include default schema before other schemas
-  private def verifySearchPath(sp: String): F[Option[String]] = {
+  private def verifySearchPath(sp: String): F[Option[String]] =
     val spSchemas          = sp.split(",").map(_.trim).toVector
     val sps                = spSchemas.mkString(", ")
     val expectedSearchPath = toSearchPath(defaultSchema, schemas)
 
-    allSchemas.diff(spSchemas) match {
+    allSchemas.diff(spSchemas) match
       case Nil =>
         // validate the order
         val defaultIdx = spSchemas.indexOf(defaultSchema)
-        if schemas.forall(s => spSchemas.indexOf(s) > defaultIdx) then {
-          none[String].pure[F]
-        } else {
+        if schemas.forall(s => spSchemas.indexOf(s) > defaultIdx) then none[String].pure[F]
+        else
           Logger[F]
             .logWarn(
               s"""|Default schema '$defaultSchema' is not in the right position of the search path '$sps'.
                   |The search_path will be set to '${expectedSearchPath}'. Consider adding it to session parameters instead.""".stripMargin
             )
             .as(Some(expectedSearchPath))
-        }
       case missing =>
         Logger[F]
           .logWarn(
@@ -414,8 +400,6 @@ class Dumbo[F[_]: {Sync, Logger}](
                 |The search_path will be set to '$expectedSearchPath'. Consider adding it to session parameters instead.""".stripMargin
           )
           .as(Some(expectedSearchPath))
-    }
-  }
 
   // acquire a session and initialize the schemas and history table
   private[dumbo] def initSession = sessionResource.evalMap { session =>
@@ -427,10 +411,11 @@ class Dumbo[F[_]: {Sync, Logger}](
       // (autocommit_before_ddl = on). Turning it off makes DDL transactional,
       // which is required for our row-level locking to work correctly.
       // Only run if the parameter is supported to avoid PostgreSQL error logs.
-      _ <- session.unique(sql"SELECT current_setting('autocommit_before_ddl', true)".query(text.opt)).flatMap {
-             case Some(_) => session.executeDiscard(sql"SET autocommit_before_ddl = off".command).attempt.void
-             case _       => ().pure[F]
-           }
+      _ <- session
+             .unique(sql"SELECT current_setting('autocommit_before_ddl', true)".query(text.opt))
+             .flatMap:
+               case Some(_) => session.executeDiscard(sql"SET autocommit_before_ddl = off".command).attempt.void
+               case _       => ().pure[F]
       _ <-
         session.transaction.use { _ =>
           for
@@ -444,11 +429,10 @@ class Dumbo[F[_]: {Sync, Logger}](
                 else ().pure[F]
               )
             _ <- session.unique(sql"SHOW search_path".query(text)).flatMap { sp =>
-                   verifySearchPath(sp).flatMap {
+                   verifySearchPath(sp).flatMap:
                      case Some(searchPathUpdate) =>
                        session.execute(sql"SET search_path TO #${searchPathUpdate}".command).void
                      case _ => ().pure[F]
-                   }
                  }
             schemaRes <-
               allSchemas.flatTraverse(schema =>
@@ -458,9 +442,11 @@ class Dumbo[F[_]: {Sync, Logger}](
                   case _                                                                       => Nil
                 }
               )
-            _ <- session.execute(dumboHistory.createTableCommand).void.recover {
-                   case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
-                 }
+            _ <- session
+                   .execute(dumboHistory.createTableCommand)
+                   .void
+                   .recover:
+                     case e: skunk.exception.PostgresErrorException if duplicateErrorCodes.contains(e.code) => ()
             _ <-
               (if schemaRes.nonEmpty then
                  session.execute(dumboHistory.insertSchemaEntry)(schemaRes.mkString("\"", "\",\"", "\"")).void
@@ -484,10 +470,9 @@ class Dumbo[F[_]: {Sync, Logger}](
                              s"Error while reading migration files:\n${errs.toList.mkString("\n")}"
                            ).raiseError[F, List[ResourceFile]]
                        }.map(ResourceFiles.fromResources)
-          _ <- {
+          _ <-
             val inLocation = resReader.location.map(l => s" in $l").getOrElse("")
             Logger[F].logInfo(s"Found ${resources.length} migration files$inLocation")
-          }
           _               <- if validateOnMigrate then validationGuard(session, resources) else ().pure[F]
           migrationResult <-
             Stream
@@ -497,7 +482,7 @@ class Dumbo[F[_]: {Sync, Logger}](
               .map(Dumbo.MigrationResult(_))
         yield migrationResult
 
-      _ <- migrationResult.migrations.sorted(using Ordering[HistoryEntry].reverse) match {
+      _ <- migrationResult.migrations.sorted(using Ordering[HistoryEntry].reverse) match
              case Nil     => Logger[F].logInfo(s"Schema ${defaultSchema} is up to date. No migration necessary")
              case history =>
                val verLog = history.collectFirst { case HistoryEntry(_, Some(v), _, _, _, _, _, _, _, _) => v }
@@ -511,20 +496,19 @@ class Dumbo[F[_]: {Sync, Logger}](
                  .logInfo(
                    s"Successfully applied ${migrationResult.migrations.length} migrations$verLog $execDurationLog"
                  )
-           }
     yield migrationResult
 
   private def validate(
     history: List[HistoryEntry],
     resources: ResourceFiles,
-  ): ValidatedNec[DumboValidationException, Unit] = {
+  ): ValidatedNec[DumboValidationException, Unit] =
     val versionedMap: Map[String, ResourceFile] = resources.versioned.map { case (v, f) => (v.text, f) }.toMap
     val repeatablesScriptNames: Set[String]     = resources.repeatable.map(_._2.path.value).toSet
 
     history
       .filter(_.`type` == "SQL")
       .traverse { h =>
-        versionedMap.get(h.version.getOrElse("")) match {
+        versionedMap.get(h.version.getOrElse("")) match
           case None if !repeatablesScriptNames.exists(_.endsWith(h.script)) =>
             new DumboValidationException(s"Detected applied migration not resolved locally ${h.script}")
               .invalidNec[Unit]
@@ -547,10 +531,8 @@ class Dumbo[F[_]: {Sync, Logger}](
             ).invalidNec[Unit]
 
           case _ => ().validNec[DumboValidationException]
-        }
       }
       .void
-  }
 
   def runClean: F[Unit] =
     if cleanDisabled then
@@ -585,7 +567,7 @@ class Dumbo[F[_]: {Sync, Logger}](
                      else cleanSchema(session, schema)
                  yield (schema, createdByDumbo)
                }
-    _ <- {
+    _ <-
       val dropped = results.collect { case (s, true) => s }
       val cleaned = results.collect { case (s, false) => s }
       val parts   = List(
@@ -593,13 +575,12 @@ class Dumbo[F[_]: {Sync, Logger}](
         Option.when(cleaned.nonEmpty)(s"cleaned schemas ${cleaned.mkString(", ")}"),
       ).flatten
       Logger[F].logInfo(s"Successfully ${parts.mkString("; ")}")
-    }
   yield ()
 
   // Drops all objects in the given schema following Flyway's doClean order:
   // materialized views, views, tables, base types (with recreate), routines,
   // enums, domains, sequences, base types (final cleanup)
-  private def cleanSchema(session: Session[F], schema: String): F[Unit] = {
+  private def cleanSchema(session: Session[F], schema: String): F[Unit] =
     def queryNames(q: Query[String, String]): F[List[String]] =
       session.execute(q)(schema)
 
@@ -653,7 +634,6 @@ class Dumbo[F[_]: {Sync, Logger}](
       types2 <- queryBaseTypes
       _      <- dropAll("TYPE", types2.map(_._1))
     yield ()
-  }
 
   private def cleanRoutines(session: Session[F], schema: String): F[Unit] =
     session.execute(CatalogQueries.listRoutinesQuery)(schema).flatMap { routines =>
@@ -669,30 +649,26 @@ class Dumbo[F[_]: {Sync, Logger}](
     }
 
   def runValidationWithHistory: F[ValidatedNec[DumboValidationException, Unit]] =
-    listMigrationFiles(resReader).flatMap {
+    listMigrationFiles(resReader).flatMap:
       case Valid(resources) =>
         sessionResource.use(
           _.execute(dumboHistory.loadAllQuery).map(history => validate(history, ResourceFiles.fromResources(resources)))
         )
       case Invalid(c) => c.invalid.pure[F]
-    }
-}
 
-object Dumbo extends internal.DumboPlatform {
+object Dumbo extends internal.DumboPlatform:
   private type MigrateToNextResult = Option[(HistoryEntry, ResourceFiles)]
 
-  object defaults {
+  object defaults:
     val defaultSchema: String      = "public"
     val schemas: Set[String]       = Set.empty[String]
     val schemaHistoryTable: String = "flyway_schema_history"
     val validateOnMigrate: Boolean = true
     val cleanDisabled: Boolean     = true
     val port: Int                  = 5432
-  }
 
-  final case class MigrationResult(migrations: List[HistoryEntry]) {
+  final case class MigrationResult(migrations: List[HistoryEntry]):
     val migrationsExecuted: Int = migrations.length
-  }
 
   def withResources[F[_]: Sync](resources: List[ResourceFilePath]): DumboWithResourcesPartiallyApplied[F] =
     new DumboWithResourcesPartiallyApplied[F](ResourceReader.embeddedResources(Sync[F].pure(resources)))
@@ -702,29 +678,24 @@ object Dumbo extends internal.DumboPlatform {
 
   // input duration in milliseconds
   // output in format mm:ss.ms e.g. 00:00.000s
-  private[dumbo] def formatDuration(ms: Long): String = {
+  private[dumbo] def formatDuration(ms: Long): String =
     val pos = math.max(ms, 0L)
     String.format("%02d:%02d.%03d", pos / 60000, (pos / 1000) % 60, (pos % 1000)) + "s"
-  }
 
-  private[dumbo] enum LockSupport {
+  private[dumbo] enum LockSupport:
     case TableLock, XactAdvisoryLock
-  }
 
   private[dumbo] def detectLockSupport[F[_]: Sync](session: Session[F]): F[Set[LockSupport]] =
-    hasTableLockSupport(session).flatMap {
+    hasTableLockSupport(session).flatMap:
       case true =>
-        hasXactAdvisoryLockSupport(session).map {
+        hasXactAdvisoryLockSupport(session).map:
           case true  => Set(LockSupport.XactAdvisoryLock, LockSupport.TableLock)
           case false => Set(LockSupport.TableLock)
-        }
 
       case false =>
-        hasXactAdvisoryLockSupport(session).map {
+        hasXactAdvisoryLockSupport(session).map:
           case true  => Set(LockSupport.XactAdvisoryLock)
           case false => Set.empty
-        }
-    }
 
   private[dumbo] def hasTableLockSupport[F[_]: Sync](session: Session[F]) =
     session.transaction.use(_ =>
@@ -755,7 +726,7 @@ object Dumbo extends internal.DumboPlatform {
       val (errs, files) = (sf.collect { case Left(err) => err }, sf.collect { case Right(v) => v })
       val duplicates    = files.groupBy(_.version).filter(_._2.length > 1).toList
 
-      (duplicates, errs.map(new DumboValidationException(_))) match {
+      (duplicates, errs.map(new DumboValidationException(_))) match
         case (Nil, Nil)         => files.sorted.validNec[DumboValidationException]
         case (Nil, x :: xs)     => NonEmptyChain(x, xs*).invalid[List[ResourceFile]]
         case (diff, exceptions) =>
@@ -766,24 +737,22 @@ object Dumbo extends internal.DumboPlatform {
             ),
             exceptions*
           ).invalid[List[ResourceFile]]
-      }
     }
 
   private[dumbo] def readResourceFiles[F[_]: Sync](
     fs: ResourceReader[F]
   ): F[List[Either[String, ResourceFile]]] =
-    fs.list.flatMap {
+    fs.list.flatMap:
       _.filter(f => f.value.endsWith(".sql")).traverse { path =>
         val confPath = path.append(".conf")
 
         fs.exists(confPath)
-          .flatMap {
+          .flatMap:
             case true  => fs.readUtf8Lines(confPath).map(ResourceFileConfig.fromLines)
             case false => Set.empty[ResourceFileConfig].asRight[String].pure[F]
-          }
-          .flatMap {
+          .flatMap:
             case Right(configs) =>
-              ResourceFileDescription.fromResourcePath(path) match {
+              ResourceFileDescription.fromResourcePath(path) match
                 case Right(desc) =>
                   for checksum <- checksum[F](path, fs)
                   yield ResourceFile(
@@ -792,12 +761,9 @@ object Dumbo extends internal.DumboPlatform {
                     configs = configs,
                   ).asRight[String]
                 case Left(err) => err.asLeft[ResourceFile].pure[F]
-              }
 
             case Left(err) => err.asLeft[ResourceFile].pure[F]
-          }
       }
-    }
 
   // implementation of checksum from Flyway
   // https://github.com/flyway/flyway/blob/main/flyway-core/src/main/java/org/flywaydb/core/internal/resolver/ChecksumCalculator.java#L59
@@ -817,4 +783,5 @@ object Dumbo extends internal.DumboPlatform {
 
   private[dumbo] def toSearchPath(defaultSchema: String, schemas: Set[String]) =
     combineSchemas(defaultSchema, schemas).map(quoteIdentifier).mkString(", ")
-}
+
+end Dumbo
