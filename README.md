@@ -12,6 +12,8 @@ Usable via command-line or as library in your Scala project targeting JVM or Nat
 Supports a subset of [Flyway](https://flywaydb.org) features and keeps a Flyway compatible history state to allow you to switch to Flyway if necessary.  
 You might also be able to simply switch from Flyway to Dumbo without any changes in migration files or the history state, depending on used Flyway features.
 
+**Note**: As of the `0.11.x` release series, Dumbo is Scala 3 only. The last release with Scala 2.13 support was published from the `0.10.x` base version line.
+
 ## Currently supports:
 
 ### Versioned Migrations
@@ -99,7 +101,7 @@ For usage via command line see [command-line](#command-line) section.
 In a sbt project dumbo can be added like:
 
 ```scala
-libraryDependencies += "dev.rolang" %% "dumbo" % "0.9.0"
+libraryDependencies += "dev.rolang" %% "dumbo" % "0.10.2"
 ```
 
 To include snapshot releases, add snapshot resolver:
@@ -219,7 +221,6 @@ def compileResources = Task.Sources("src/main/resources")
 ```
 
 - For Scala Native ensure to have [embedded resources](https://scala-native.org/en/stable/lib/javalib.html?highlight=resources#embedding-resources) enabled.
-- In Scala 2 the resource location will be checked at runtime
 
 To read migration scripts from the files system use:
 
