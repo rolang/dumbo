@@ -53,7 +53,9 @@ final case class ResourceFile(
     configs.collectFirst { case ResourceFileConfig.ExecuteInTransaction(v) => v }.getOrElse(true)
 }
 
-sealed abstract class ResourceFileConfig(protected val key: String) {
+enum ResourceFileConfig(protected val key: String) {
+  case ExecuteInTransaction(value: Boolean) extends ResourceFileConfig(ResourceFileConfig.txn)
+
   override def hashCode(): Int = key.hashCode()
 
   override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
@@ -63,8 +65,6 @@ sealed abstract class ResourceFileConfig(protected val key: String) {
 }
 
 object ResourceFileConfig {
-  final case class ExecuteInTransaction(value: Boolean) extends ResourceFileConfig(txn)
-
   private val txn = "executeInTransaction"
 
   private def invalidBoolean(key: String, v: String) =
@@ -137,9 +137,7 @@ object ResourceFileDescription {
   }
 }
 
-sealed trait ResourceVersion extends Ordered[ResourceVersion] {
-  import ResourceVersion.*
-
+enum ResourceVersion extends Ordered[ResourceVersion] {
   def compare(that: ResourceVersion): Int = {
     @tailrec
     def cmprVersioned(a: List[Long], b: List[Long]): Int =
@@ -164,26 +162,37 @@ sealed trait ResourceVersion extends Ordered[ResourceVersion] {
     case Repeatable(_)       => None
     case Versioned(plain, _) => Some(plain)
   }
+
+  // strip trailing 0
+  // 1.0 -> 1
+  // 0.01.0.0 -> 0.1
+  override def toString: String = this match {
+    case Repeatable(description) => s"Repeatable($description)"
+    case Versioned(_, parts)     =>
+      parts.reverse.toList.dropWhile(_ <= 0).map(_.toString).reverse.mkString(".")
+  }
+
+  // 1.0 should yield same hash code as 1 or 1.0.0 etc.
+  override def hashCode: Int = this match {
+    case Repeatable(description) => description.hashCode
+    case Versioned(_, parts)     => parts.reverse.foldLeft("")(_ + _.toString).toInt
+  }
+
+  override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
+    case that: ResourceVersion =>
+      (this, that) match {
+        case (Repeatable(descThis), Repeatable(descThat)) => descThis == descThat
+        case (thisV: Versioned, thatV: Versioned)         => thisV.compare(thatV) == 0
+        case _                                            => false
+      }
+    case _ => false
+  }
+
+  case Repeatable(description: String)
+  case Versioned(text: String, parts: NonEmptyList[Long])
 }
 
 object ResourceVersion {
-  case class Repeatable(description: String)                          extends ResourceVersion
-  final case class Versioned(text: String, parts: NonEmptyList[Long]) extends ResourceVersion {
-    // strip trailing 0
-    // 1.0 -> 1
-    // 0.01.0.0 -> 0.1
-    override def toString: String =
-      parts.reverse.toList.dropWhile(_ <= 0).map(_.toString).reverse.mkString(".")
-
-    // 1.0 should yield same hash code as 1 or 1.0.0 etc.
-    override def hashCode: Int = parts.reverse.foldLeft("")(_ + _.toString).toInt
-
-    override def equals(b: Any): Boolean = b.asInstanceOf[Matchable] match {
-      case s: Versioned => this.compare(s) == 0
-      case _            => false
-    }
-  }
-
   object Versioned {
     def fromString(version: String): Either[String, Versioned] =
       Try(version.split('.').map(_.toLong)) match {

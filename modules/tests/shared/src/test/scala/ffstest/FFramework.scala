@@ -24,8 +24,8 @@ import skunk.Session.Credentials
 import skunk.implicits.*
 
 trait FTest extends CatsEffectSuite with FTestPlatform {
-  implicit val noopMeter: Meter[IO] = Meter.noop[IO]
-  def postgresPort: Int             = 5432
+  given noopMeter: Meter[IO] = Meter.noop[IO]
+  def postgresPort: Int      = 5432
 
   def dbTest(name: String)(f: => IO[Unit]): Unit = test(name)(dropSchemas >> f)
 
@@ -64,8 +64,8 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
     logMigrationStateAfter: Duration = Duration.Inf,
-  )(implicit l: Logger[IO]): IO[Dumbo.MigrationResult] =
-    (if (logMigrationStateAfter.isFinite) {
+  )(using l: Logger[IO]): IO[Dumbo.MigrationResult] =
+    (if logMigrationStateAfter.isFinite then {
        withResources.withMigrationStateLogAfter(FiniteDuration(logMigrationStateAfter.toMillis, MILLISECONDS))(
          connection = connectionConfig,
          defaultSchema = defaultSchema,
@@ -90,7 +90,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     schemas: List[String] = Nil,
     schemaHistoryTable: String = "flyway_schema_history",
     validateOnMigrate: Boolean = true,
-  )(implicit l: Logger[IO]): IO[Dumbo.MigrationResult] =
+  )(using l: Logger[IO]): IO[Dumbo.MigrationResult] =
     withResources
       .withSession(
         sessionResource = session,
@@ -119,7 +119,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
     withResources: DumboWithResourcesPartiallyApplied[IO],
     schemas: List[String] = Nil,
     schemaHistoryTable: String = "flyway_schema_history",
-  )(implicit l: Logger[IO]): IO[Unit] =
+  )(using l: Logger[IO]): IO[Unit] =
     withResources
       .apply(
         connection = connectionConfig,
@@ -131,7 +131,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       .runClean
 
   def dropSchemas: IO[Unit] = session().use { s =>
-    for {
+    for
       customSchemas <-
         s.execute(
           sql"""|SELECT schema_name::text
@@ -142,7 +142,7 @@ trait FTest extends CatsEffectSuite with FTestPlatform {
       _ <- IO.println(s"Dropping schemas ${customSchemas.mkString(", ")}")
       c <- customSchemas.traverse(schema => s.execute(sql"DROP SCHEMA IF EXISTS #${schema} CASCADE".command))
       _ <- IO.println(s"Schema drop result ${c.mkString(", ")}")
-    } yield ()
+    yield ()
   }
 }
 

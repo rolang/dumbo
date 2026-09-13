@@ -1,7 +1,7 @@
 import scala.scalanative.build.*
 
-lazy val `scala-3`        = "3.3.8"
-lazy val `scala-3-latest` = "3.7.4"
+lazy val `scala-3`      = "3.9.0"
+lazy val `scala-3-next` = "3.9.0"
 
 ThisBuild / tlBaseVersion      := "0.11"
 ThisBuild / startYear          := Some(2023)
@@ -18,9 +18,6 @@ ThisBuild / evictionWarningOptions ~= (_.withConfigurations(List(Compile)))
 ThisBuild / versionScheme := Some("early-semver")
 ThisBuild / description   := "Simple database migration tool for Scala + Postgres"
 ThisBuild / homepage      := Some(url("https://github.com/rolang/dumbo"))
-
-ThisBuild / semanticdbEnabled := true
-ThisBuild / semanticdbVersion := scalafixSemanticdb.revision // use Scalafix compatible version
 
 // githubWorkflow
 val defautOs   = "ubuntu-latest"
@@ -42,7 +39,6 @@ ThisBuild / githubWorkflowBuildMatrixExclusions ++= Seq(
 )
 ThisBuild / githubWorkflowJavaVersions := testJavaVersions
 ThisBuild / tlCiHeaderCheck            := true
-ThisBuild / tlCiScalafixCheck          := false
 
 lazy val llvmVersion  = "22"
 lazy val brewFormulas = Set("s2n", "utf8proc")
@@ -74,8 +70,8 @@ ThisBuild / githubWorkflowBuildPreamble ++= List(
 
 ThisBuild / githubWorkflowBuild := {
   WorkflowStep.Sbt(
-    List("Test/copyResources; scalafixAll --check; all scalafmtSbtCheck scalafmtCheckAll"),
-    name = Some("Check scalafix/scalafmt lints"),
+    List("Test/copyResources; all scalafmtSbtCheck scalafmtCheckAll"),
+    name = Some("Check scalafmt lints"),
     cond = Some(
       s"matrix.java == '${defaultJavaVersion.render}' && (matrix.scala == '3') && matrix.project == 'rootJVM' && startsWith(matrix.os, 'ubuntu')"
     ),
@@ -214,8 +210,8 @@ ThisBuild / githubWorkflowBuild += WorkflowStep.Run(
   cond = Some("matrix.project == 'rootJVM' && matrix.scala == '3'"),
 )
 
-addCommandAlias("fix", "; +Test/copyResources; +scalafixAll; +scalafmtAll; scalafmtSbt")
-addCommandAlias("check", "; +Test/copyResources; +scalafixAll --check; +scalafmtCheckAll; scalafmtSbtCheck")
+addCommandAlias("fix", "; +Test/copyResources; +scalafmtAll; scalafmtSbt")
+addCommandAlias("check", "; +Test/copyResources; +scalafmtCheckAll; scalafmtSbtCheck")
 
 lazy val commonSettings = List(
   // Headers
@@ -385,8 +381,8 @@ lazy val example = project
   .dependsOn(core.jvm)
   .settings(commonSettings)
   .settings(
-    scalaVersion          := `scala-3-latest`,
-    crossScalaVersions    := Seq(`scala-3-latest`),
+    scalaVersion          := `scala-3-next`,
+    crossScalaVersions    := Seq(`scala-3-next`),
     Compile / run / fork  := true,
     Compile / headerCheck := Nil,
     scalacOptions -= "-Werror",

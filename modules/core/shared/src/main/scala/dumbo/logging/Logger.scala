@@ -21,7 +21,7 @@ trait Logger[F[_]] {
 }
 
 object Logger {
-  def apply[F[_]](implicit L: Logger[F]): Logger[F] = L
+  def apply[F[_]](using L: Logger[F]): Logger[F] = L
 
   def noop[F[_]: Applicative] = new Logger[F] {
     def apply(level: LogLevel, message: => String) = Applicative[F].unit
@@ -34,7 +34,7 @@ object Logger {
     level: LogLevel,
     pretty: Boolean,
   ): F[Unit] = {
-    val formattedMsg = if (pretty) {
+    val formattedMsg = if pretty then {
       val lc = level match {
         case Info => Console.CYAN
         case Warn => Console.YELLOW
@@ -80,7 +80,7 @@ object Logger {
     )
   }
 
-  def fromConsoleWithTimestamp[F[_]: Clock: FlatMap](
+  def fromConsoleWithTimestamp[F[_]: {Clock, FlatMap}](
     console: CatsConsole[F],
     pretty: Boolean = true,
   ) = new Logger[F] {
@@ -100,12 +100,12 @@ object Logger {
   }
 }
 
-sealed trait LogLevel
-object LogLevel {
-  case object Info extends LogLevel
-  case object Warn extends LogLevel
+enum LogLevel {
+  case Info, Warn
+}
 
-  implicit val show: Show[LogLevel] = new Show[LogLevel] {
+object LogLevel {
+  given show: Show[LogLevel] = new Show[LogLevel] {
     override def show(t: LogLevel): String = t match {
       case Info => "info"
       case Warn => "warn"
@@ -114,17 +114,17 @@ object LogLevel {
 }
 
 object Implicits {
-  implicit def console[F[_]: CatsConsole]: Logger[F] =
+  given console: [F[_]: CatsConsole] => Logger[F] =
     Logger.fromConsole(console = CatsConsole[F], pretty = false)
 
-  implicit def consolePretty[F[_]: CatsConsole]: Logger[F] =
+  given consolePretty: [F[_]: CatsConsole] => Logger[F] =
     Logger.fromConsole(console = CatsConsole[F], pretty = true)
 
-  implicit def consoleWithTimestamp[F[_]: CatsConsole: Clock: FlatMap]: Logger[F] =
+  given consoleWithTimestamp: [F[_]: {CatsConsole, Clock, FlatMap}] => Logger[F] =
     Logger.fromConsoleWithTimestamp(console = CatsConsole[F], pretty = false)
 
-  implicit def consolePrettyWithTimestamp[F[_]: CatsConsole: Clock: FlatMap]: Logger[F] =
+  given consolePrettyWithTimestamp: [F[_]: {CatsConsole, Clock, FlatMap}] => Logger[F] =
     Logger.fromConsoleWithTimestamp(console = CatsConsole[F], pretty = true)
 
-  implicit def noop[F[_]: Applicative]: Logger[F] = Logger.noop[F]
+  given noop: [F[_]: Applicative] => Logger[F] = Logger.noop[F]
 }

@@ -9,9 +9,9 @@ import java.net.URI
 import scala.annotation.tailrec
 import scala.util.Try
 
+import dumbo.ConnectionConfig
 import dumbo.Dumbo.defaults
 import fs2.io.file.Path
-import dumbo.ConnectionConfig
 
 final case class Arguments(
   commands: List[Command],

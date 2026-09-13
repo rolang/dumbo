@@ -10,13 +10,13 @@ import cats.implicits.*
 class DumboJvmSpec extends ffstest.FTest {
 
   test("find resource in main") {
-    for {
+    for
       result <- Dumbo.withResourcesIn[IO]("main").listMigrationFiles
       _       = result match {
             case Valid(f)      => assert(f.exists(_.path.fileName.toString == "V1__dummy.sql"))
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
           }
-    } yield ()
+    yield ()
   }
 
 }

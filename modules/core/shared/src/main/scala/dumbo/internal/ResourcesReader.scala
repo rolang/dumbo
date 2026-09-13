@@ -33,7 +33,7 @@ private[dumbo] object ResourceReader {
   def fileFs[F[_]: Sync](sourceDir: Path): ResourceReader[F] = {
     val base = Path.of(new java.io.File("").toURI())
 
-    @inline def absolutePath(p: Path) = if (p.isAbsolute) p else Path.of(base.toString(), p.toString())
+    @inline def absolutePath(p: Path) = if p.isAbsolute then p else Path.of(base.toString(), p.toString())
 
     new ResourceReader[F] {
 

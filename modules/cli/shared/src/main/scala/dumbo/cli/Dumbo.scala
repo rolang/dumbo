@@ -9,9 +9,9 @@ import cats.effect.std.Console
 import cats.effect.{ExitCode, IO, IOApp}
 import dumbo.BuildInfo
 import dumbo.Dumbo.defaults
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
-import org.typelevel.otel4s.metrics.Meter.Implicits.noop
 import dumbo.logging.Implicits.consolePrettyWithTimestamp
+import org.typelevel.otel4s.metrics.Meter.Implicits.noop
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 
 object Dumbo extends IOApp {
   private def printHelp(cmd: Option[Command] = None) = {
@@ -61,14 +61,14 @@ object Dumbo extends IOApp {
     def collectConfig[T](config: Config[T]): Option[Either[String, T]] =
       configs.collectFirst { case (c, v) if c == config => config.parse(v) }
 
-    for {
+    for
       uri <- collectConfig(Config.Url).toRight("Missing url").flatten
       _   <- Option(uri.getScheme()) match
              case None               => Left(s"Missing scheme in $uri")
              case Some("postgresql") => Right(())
              case Some(invalid)      => Left(s"Unsupported scheme $invalid")
       host     <- Option(uri.getHost()).toRight(s"Missing or invalid hostname in $uri")
-      port      = { val p = uri.getPort(); if (p > -1) p else defaults.port }
+      port      = { val p = uri.getPort(); if p > -1 then p else defaults.port }
       database <- Option(uri.getPath()).flatMap(_.split("/").drop(1).headOption).toRight(s"Missing database in $uri")
       user     <- collectConfig(Config.User).toRight("Missing user").flatten
       password <- collectConfig(Config.Password) match
@@ -98,7 +98,7 @@ object Dumbo extends IOApp {
                      password = password,
                      ssl = ssl,
                    )
-    } yield (
+    yield (
       dumbo.Dumbo
         .withFilesIn[IO](location)
         .apply(

@@ -12,7 +12,7 @@ import fs2.io.file.Path
 
 class DumboResourcesSpec extends ffstest.FTest {
   test("list migration files from resources") {
-    for {
+    for
       files <- dumboWithResources("db/test_1").listMigrationFiles
       _      = files match {
             case Valid(files) =>
@@ -26,11 +26,11 @@ class DumboResourcesSpec extends ffstest.FTest {
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
           }
-    } yield ()
+    yield ()
   }
 
   test("list migration files from resources with subirectories") {
-    for {
+    for
       files <- dumboWithResources("db/nested").listMigrationFiles
       _      = files match {
             case Valid(files) =>
@@ -46,11 +46,11 @@ class DumboResourcesSpec extends ffstest.FTest {
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
           }
-    } yield ()
+    yield ()
   }
 
   test("list migration files from relative path") {
-    for {
+    for
       files <- Dumbo.withFilesIn[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1")).listMigrationFiles
       _      = files match {
             case Valid(files) =>
@@ -66,11 +66,11 @@ class DumboResourcesSpec extends ffstest.FTest {
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
           }
-    } yield ()
+    yield ()
   }
 
   test("list migration files from absolute path") {
-    for {
+    for
       files <-
         Dumbo.withFilesIn[IO](Path("modules/tests/shared/src/test/non_resource/db/test_1").absolute).listMigrationFiles
       _ = files match {
@@ -87,11 +87,11 @@ class DumboResourcesSpec extends ffstest.FTest {
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
           }
-    } yield ()
+    yield ()
   }
 
   test("fail on files with same versions") {
-    for {
+    for
       result <- dumboWithResources("db/test_duplicate_versions").listMigrationFiles
       _       = result match {
             case Invalid(errs) =>
@@ -108,14 +108,14 @@ class DumboResourcesSpec extends ffstest.FTest {
               })
             case _ => fail("expected failure")
           }
-    } yield ()
+    yield ()
   }
 
   test("handle non-existent directory without NPE") {
-    for {
+    for
       res <- Dumbo.withFilesIn[IO](Path("/non/existent/directory")).listMigrationFiles.attempt
       _    = assert(res.isLeft)
       _    = assert(res.left.exists(_.isInstanceOf[java.nio.file.NoSuchFileException]))
-    } yield ()
+    yield ()
   }
 }
