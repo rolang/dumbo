@@ -9,21 +9,21 @@ import java.net.URI
 import scala.annotation.tailrec
 import scala.util.Try
 
+import dumbo.ConnectionConfig
 import dumbo.Dumbo.defaults
 import fs2.io.file.Path
-import dumbo.ConnectionConfig
 
 final case class Arguments(
   commands: List[Command],
   configs: List[(Config[?], String)],
   flags: List[Flag],
   unknown: List[String],
-) {
+):
   def withCommand(c: Command)             = copy(commands = c :: commands)
   def withConfig(c: Config[?], v: String) = copy(configs = (c, v) :: configs)
   def withFlag(f: Flag)                   = copy(flags = f :: flags)
   def withUnknown(arg: String)            = copy(unknown = arg :: unknown)
-}
+end Arguments
 
 object Arguments:
   val empty: Arguments = Arguments(Nil, Nil, Nil, Nil)
@@ -62,6 +62,8 @@ object Arguments:
                     case Some(flag) => walk(tail, result.withFlag(flag))
 
     walk(args = arguments.reverse, Arguments.empty)
+
+end Arguments
 
 enum Command(val keys: Set[String], val desc: String, val configs: List[Config[?]], val flags: List[Flag]):
   case Help    extends Command(Set("help"), "Print this usage info and exit", Nil, Nil)
@@ -164,6 +166,8 @@ enum Config[T](val key: String, val desc: String, val parse: String => Either[St
           case other   => Left(s"Invalid value for cleanDisabled: $other")
         },
       )
+
+end Config
 
 object Config:
   def helpMap(configs: List[Config[?]]) = configs.map(c => c.key -> c.desc).toMap

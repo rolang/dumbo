@@ -4,8 +4,8 @@
 
 package dumbo
 
-class ResourceFileConfigSpec extends ffstest.FTest {
-  test("parse config file") {
+class ResourceFileConfigSpec extends ffstest.FTest:
+  test("parse config file"):
     assertEquals(
       ResourceFileConfig.fromLines(List("executeInTransaction=true")),
       Right[String, Set[ResourceFileConfig]](Set(ResourceFileConfig.ExecuteInTransaction(value = true))),
@@ -50,5 +50,5 @@ class ResourceFileConfigSpec extends ffstest.FTest {
         .fromLines(List("executeInTransaction=abc")),
       Left("Invalid value for executeInTransaction (should be either true or false): abc"),
     )
-  }
-}
+
+end ResourceFileConfigSpec

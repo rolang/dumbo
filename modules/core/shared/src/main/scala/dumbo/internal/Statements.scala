@@ -6,11 +6,11 @@ package dumbo.internal
 
 import scala.annotation.tailrec
 
-private[dumbo] object Statements {
-  def intoSingleStatements(sql: String): Vector[String] = {
+private[dumbo] object Statements:
+  def intoSingleStatements(sql: String): Vector[String] =
     @tailrec
     def build(stmts: Vector[String], stmt: String, sc: Option[(String, Int)], next: Seq[Char]): Vector[String] =
-      (sc, next) match {
+      (sc, next) match
         // single quotes
         case (None, '\'' +: xs)           => build(stmts, stmt + '\'', Some(("'", 0)), xs)
         case (Some(("'", _)), '\'' +: xs) => build(stmts, stmt + '\'', None, xs)
@@ -39,8 +39,7 @@ private[dumbo] object Statements {
         case (None, ';' +: xs) => build(stmts :+ stmt, "", None, xs)
         case (s, c +: xs)      => build(stmts, stmt + c, s, xs)
         case _                 => stmts :+ stmt
-      }
 
     build(Vector.empty[String], "", None, sql.toCharArray().toIndexedSeq)
-  }
-}
+
+end Statements
