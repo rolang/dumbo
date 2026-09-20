@@ -20,15 +20,14 @@ final case class HistoryEntry(
   installedOn: LocalDateTime,
   executionTimeMs: Int,
   success: Boolean,
-) extends Ordered[HistoryEntry] {
+) extends Ordered[HistoryEntry]:
 
   override def compare(that: HistoryEntry): Int = installedRank.compare(that.installedRank)
 
   def resourceVersion: Option[ResourceVersion.Versioned] =
     version.flatMap(ResourceVersion.Versioned.fromString(_).toOption)
-}
 
-object HistoryEntry {
+object HistoryEntry:
   final case class New(
     version: Option[String],
     description: String,
@@ -39,11 +38,10 @@ object HistoryEntry {
     success: Boolean,
   )
 
-  object New {
+  object New:
     val codec: Codec[New] =
       (varchar(50).opt *: varchar(200) *: varchar(20) *: varchar(1000) *: int4.opt *: int4 *: bool)
         .to[New]
-  }
 
   val codec: Codec[HistoryEntry] =
     (int4 *: varchar(50).opt *: varchar(200) *: varchar(20) *: varchar(1000) *: int4.opt *: varchar(
@@ -53,9 +51,8 @@ object HistoryEntry {
 
   val fieldNames =
     "installed_rank::INT4, version, description, type, script, checksum::INT4, installed_by, installed_on, execution_time::INT4, success"
-}
 
-class History(schema: String, table: String) {
+class History(schema: String, table: String):
   private val quotedTableName = s"${Dumbo.quoteIdentifier(schema)}.${Dumbo.quoteIdentifier(table)}"
 
   val createTableCommand: Command[Void] =
@@ -87,14 +84,13 @@ class History(schema: String, table: String) {
           ORDER BY description ASC, installed_rank DESC"""
       .query(varchar(200) ~ int4)
 
-  val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] = {
+  val insertSQLEntry: Query[HistoryEntry.New, HistoryEntry] =
     val nextRank = sql"(SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM #${quotedTableName})"
 
     sql"""INSERT INTO #${quotedTableName}
           (installed_rank, version, description, type, script, checksum, execution_time, success, installed_on, installed_by)
           VALUES ($nextRank, ${HistoryEntry.New.codec}, CURRENT_TIMESTAMP, CURRENT_USER)
           RETURNING #${HistoryEntry.fieldNames}""".query(HistoryEntry.codec)
-  }
 
   val updateSQLEntry: Query[HistoryEntry.New *: Int *: EmptyTuple, HistoryEntry] =
     sql"""UPDATE #${quotedTableName} 
@@ -112,8 +108,8 @@ class History(schema: String, table: String) {
           VALUES 
           (0, '<< Flyway Schema Creation >>', 'SCHEMA', ${varchar(1000)}, 0, true, CURRENT_TIMESTAMP, CURRENT_USER)
           ON CONFLICT DO NOTHING""".command
-}
 
-object History {
+end History
+
+object History:
   def apply(schema: String, table: String) = new History(schema, table)
-}

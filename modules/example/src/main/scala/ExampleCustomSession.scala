@@ -1,8 +1,8 @@
 import cats.effect.{IO, IOApp}
-import dumbo.logging.Implicits.console
 import dumbo.Dumbo
-import org.typelevel.otel4s.trace.Tracer.Implicits.noop
+import dumbo.logging.Implicits.console
 import org.typelevel.otel4s.metrics.Meter.Implicits.noop
+import org.typelevel.otel4s.trace.Tracer.Implicits.noop
 import skunk.Session
 import skunk.Session.Credentials
 

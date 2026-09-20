@@ -4,8 +4,8 @@
 
 package dumbo
 
-class DumboUtilSpec extends ffstest.FTest {
-  test("format execution time") {
+class DumboUtilSpec extends ffstest.FTest:
+  test("format execution time"):
     List(
       -100L    -> "00:00.000s",
       -1000L   -> "00:00.000s",
@@ -23,5 +23,3 @@ class DumboUtilSpec extends ffstest.FTest {
     ).foreach { case (input, expected) =>
       assertEquals(Dumbo.formatDuration(input), expected, s"input ${input}ms")
     }
-  }
-}

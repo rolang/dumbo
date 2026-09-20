@@ -4,9 +4,9 @@
 
 package dumbo.internal
 
-class StatementsSpec extends ffstest.FTest {
+class StatementsSpec extends ffstest.FTest:
 
-  test("split into single statements") {
+  test("split into single statements"):
     val res = Statements.intoSingleStatements(
       """
         |INSERT INTO test (template) VALUES ('T2');
@@ -133,6 +133,5 @@ class StatementsSpec extends ffstest.FTest {
          |;*/
          |select 1""".stripMargin,
     )
-  }
 
-}
+end StatementsSpec

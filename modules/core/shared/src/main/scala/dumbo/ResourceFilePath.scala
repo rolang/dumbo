@@ -26,9 +26,8 @@ object ResourceFilePath:
           val jarFilePath = srcUriStr.slice(srcUriStr.lastIndexOf(":") + 1, srcUriStr.lastIndexOf("!"))
 
           val resources = Using.resource {
-            try {
-              java.util.zip.ZipFile(jarFilePath)
-            } catch {
+            try java.util.zip.ZipFile(jarFilePath)
+            catch
               case _: Throwable =>
                 // another attempt as a (hopefully temporary) workaround in case a path got URL encoded twice
                 // e.g. a common SNAPSHOT version may contain a '+' sign and look like 'my-lib-0.0.0+123-456-SNAPSHOT'
@@ -37,7 +36,6 @@ object ResourceFilePath:
                 // not sure yet which side would need to fix that, for now this gets it working
                 // helps only with a double encoded `+` sign which may be commonly used in snapshot versions
                 java.util.zip.ZipFile(jarFilePath.replace("%252B", "%2B"))
-            }
           } { fs =>
             fs
               .entries()
@@ -74,3 +72,5 @@ object ResourceFilePath:
     inline def value: String                       = s
     inline def append(p: String): ResourceFilePath = s + p
     inline def fileName: String                    = Path.of(s).getFileName().toString()
+
+end ResourceFilePath
