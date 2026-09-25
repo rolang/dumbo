@@ -21,6 +21,9 @@ import skunk.implicits.*
 trait DumboMigrationSpec extends ffstest.FTest:
   def db: Db
 
+  // tests running DDL in a non-transactional migration, see DumboSpecCockroachDb for why they are ignored there
+  def nonTransactionalDdlTest(name: String)(f: => IO[Unit]): Unit = dbTest(name)(f)
+
   def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit =
     def toCompare(h: HistoryEntry) =
       (h.installedRank, h.version, h.script, h.checksum, h.`type`, h.installedBy, h.success)
@@ -164,7 +167,7 @@ trait DumboMigrationSpec extends ffstest.FTest:
               assert(errLines.exists(_.matches(".*enum value is not yet public.")))
     yield ()
 
-  dbTest("Execute non-transactional operations with executeInTransaction=false"):
+  nonTransactionalDdlTest("Execute non-transactional operations with executeInTransaction=false"):
     val withResources = dumboWithResources("db/test_non_transactional_enabled")
     val schema        = someSchemaName
 
@@ -175,7 +178,7 @@ trait DumboMigrationSpec extends ffstest.FTest:
       _         = assertEquals(history.map(h => (h.script, h.success)), List(("V1__non_transactional.sql", true)))
     yield ()
 
-  dbTest("Record history of non-transactional versioned and repeatable migrations"):
+  nonTransactionalDdlTest("Record history of non-transactional versioned and repeatable migrations"):
     val withResources = dumboWithResources("db/test_non_transactional_concurrently")
     val schema        = someSchemaName
 
@@ -392,3 +395,9 @@ class DumboSpecCockroachDb extends DumboMigrationSpec:
 
   override def dbTest(name: String)(f: => IO[Unit]): Unit =
     test(name.tag(TestTags.CockroachDbTest))(dropSchemas >> f)
+
+  // The DDL of a non-transactional migration runs on a separate session while the migration transaction on the main
+  // session is still open. On CockroachDB that DDL does not complete (observed with v25.2), likely because schema
+  // changes wait for open transactions holding leases on the affected descriptors.
+  override def nonTransactionalDdlTest(name: String)(f: => IO[Unit]): Unit =
+    test(name.tag(TestTags.CockroachDbTest).ignore)(IO.unit)
