@@ -164,6 +164,36 @@ trait DumboMigrationSpec extends ffstest.FTest:
               assert(errLines.exists(_.matches(".*enum value is not yet public.")))
     yield ()
 
+  dbTest("Execute non-transactional operations with executeInTransaction=false"):
+    val withResources = dumboWithResources("db/test_non_transactional_enabled")
+    val schema        = someSchemaName
+
+    for
+      dumboRes <- dumboMigrate(schema, withResources)
+      _         = assertEquals(dumboRes.migrationsExecuted, 1)
+      history  <- loadHistory(schema).map(_.filter(_.`type` == "SQL"))
+      _         = assertEquals(history.map(h => (h.script, h.success)), List(("V1__non_transactional.sql", true)))
+    yield ()
+
+  dbTest("Record history of non-transactional versioned and repeatable migrations"):
+    val withResources = dumboWithResources("db/test_non_transactional_concurrently")
+    val schema        = someSchemaName
+
+    for
+      dumboRes <- dumboMigrate(schema, withResources)
+      _         = assertEquals(dumboRes.migrationsExecuted, 4)
+      history  <- loadHistory(schema).map(_.filter(_.`type` == "SQL"))
+      _         = assertEquals(
+            history.map(h => (h.script, h.success)),
+            List(
+              ("V1__create_table.sql", true),
+              ("V2__create_index.sql", true),
+              ("V3__insert.sql", true),
+              ("R__create_index.sql", true),
+            ),
+          )
+    yield ()
+
   dbTest("schemas are included in the search path"):
     val withResources = dumboWithResources("db/test_search_path")
     val schemas       = List("schema_1", "schema_2")

@@ -8,7 +8,7 @@ import cats.data.NonEmptyList
 import cats.data.Validated.{Invalid, Valid}
 import cats.effect.IO
 import cats.implicits.*
-import fs2.io.file.Path
+import fs2.io.file.{Files, Path}
 
 class DumboResourcesSpec extends ffstest.FTest:
   test("list migration files from resources"):
@@ -81,6 +81,30 @@ class DumboResourcesSpec extends ffstest.FTest:
               )
             case Invalid(errs) => fail(errs.toList.mkString("\n"))
     yield ()
+
+  test("list migration files from symlinked directory"):
+    val target = Path("modules/tests/shared/src/test/non_resource/db/test_1").absolute
+
+    Files[IO].tempDirectory.use: tmpDir =>
+      val link = tmpDir / "migrations"
+
+      for
+        _     <- Files[IO].createSymbolicLink(link, target)
+        files <- Dumbo.withFilesIn[IO](link).listMigrationFiles
+        _      = files match
+              case Valid(files) =>
+                assert(
+                  files.sorted.map(f => (f.version, f.path.fileName.toString)) == List(
+                    (ResourceVersion.Versioned("1", NonEmptyList.of(1)), "V1__non_resource.sql"),
+                    (ResourceVersion.Versioned("2", NonEmptyList.of(2)), "V2__non_resource.sql"),
+                    (ResourceVersion.Versioned("3", NonEmptyList.of(3)), "V3__non_resource.sql"),
+                    (ResourceVersion.Versioned("4", NonEmptyList.of(4)), "V4__non_resource.sql"),
+                    (ResourceVersion.Repeatable("a"), "R__a.sql"),
+                    (ResourceVersion.Repeatable("b"), "R__b.sql"),
+                  )
+                )
+              case Invalid(errs) => fail(errs.toList.mkString("\n"))
+      yield ()
 
   test("fail on files with same versions"):
     for
