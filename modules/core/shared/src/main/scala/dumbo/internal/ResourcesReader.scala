@@ -5,7 +5,7 @@
 package dumbo.internal
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, NoSuchFileException, Path}
+import java.nio.file.{FileVisitOption, Files, NoSuchFileException, Path}
 
 import scala.io.{BufferedSource, Source}
 import scala.jdk.CollectionConverters.*
@@ -48,7 +48,8 @@ private[dumbo] object ResourceReader {
         Sync[F].delay(Files.exists(dir)).flatMap {
           case true =>
             Sync[F].delay(
-              Using.resource(Files.walk(dir))(
+              // follow symbolic links, otherwise a symlinked location (or sub-directory) is listed as empty
+              Using.resource(Files.walk(dir, FileVisitOption.FOLLOW_LINKS))(
                 _.iterator().asScala
                   .filter(Files.isRegularFile(_))
                   .map(p => ResourceFilePath(p.toString()))
