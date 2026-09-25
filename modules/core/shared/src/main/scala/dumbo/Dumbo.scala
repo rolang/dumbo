@@ -320,11 +320,11 @@ class Dumbo[F[_]: {Sync, Logger}](
                     val transactSession: Resource[F, Session[F]] =
                       if x.executeInTransaction then Resource.pure(session) else sessionResource
 
-                    transactSession.use { s =>
-                      transact(x, fs, s)
-                        .flatMap(updateHistory(latestInstalled, s))
-                        .map((_, xs).some)
-                    }
+                    // update the history on the main session as it holds the lock on the history table
+                    transactSession
+                      .use(transact(x, fs, _))
+                      .flatMap(updateHistory(latestInstalled, session))
+                      .map((_, xs).some)
                   case _ => none.pure[F]
     yield result
 
@@ -346,9 +346,8 @@ class Dumbo[F[_]: {Sync, Logger}](
                  val transactSession: Resource[F, Session[F]] =
                    if x.executeInTransaction then Resource.pure(session) else sessionResource
 
-                 transactSession.use { s =>
-                   transact(x, fs, s).flatMap(updateHistory(None, s)).map((_, xs).some)
-                 }
+                 // update the history on the main session as it holds the lock on the history table
+                 transactSession.use(transact(x, fs, _)).flatMap(updateHistory(None, session)).map((_, xs).some)
                case Nil => none.pure[F]
     yield res
 
