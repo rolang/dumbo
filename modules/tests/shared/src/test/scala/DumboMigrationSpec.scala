@@ -21,6 +21,9 @@ import skunk.implicits.*
 trait DumboMigrationSpec extends ffstest.FTest:
   def db: Db
 
+  // tests running DDL in a non-transactional migration, see DumboSpecCockroachDb for why they are ignored there
+  def nonTransactionalDdlTest(name: String)(f: => IO[Unit]): Unit = dbTest(name)(f)
+
   def assertEqualHistory(histA: List[HistoryEntry], histB: List[HistoryEntry]): Unit =
     def toCompare(h: HistoryEntry) =
       (h.installedRank, h.version, h.script, h.checksum, h.`type`, h.installedBy, h.success)
@@ -162,6 +165,36 @@ trait DumboMigrationSpec extends ffstest.FTest:
               assert(errLines.exists(_.matches(""".*Unsafe use of new value ".*" of enum type.*""")))
             case Db.CockroachDb =>
               assert(errLines.exists(_.matches(".*enum value is not yet public.")))
+    yield ()
+
+  nonTransactionalDdlTest("Execute non-transactional operations with executeInTransaction=false"):
+    val withResources = dumboWithResources("db/test_non_transactional_enabled")
+    val schema        = someSchemaName
+
+    for
+      dumboRes <- dumboMigrate(schema, withResources)
+      _         = assertEquals(dumboRes.migrationsExecuted, 1)
+      history  <- loadHistory(schema).map(_.filter(_.`type` == "SQL"))
+      _         = assertEquals(history.map(h => (h.script, h.success)), List(("V1__non_transactional.sql", true)))
+    yield ()
+
+  nonTransactionalDdlTest("Record history of non-transactional versioned and repeatable migrations"):
+    val withResources = dumboWithResources("db/test_non_transactional_concurrently")
+    val schema        = someSchemaName
+
+    for
+      dumboRes <- dumboMigrate(schema, withResources)
+      _         = assertEquals(dumboRes.migrationsExecuted, 4)
+      history  <- loadHistory(schema).map(_.filter(_.`type` == "SQL"))
+      _         = assertEquals(
+            history.map(h => (h.script, h.success)),
+            List(
+              ("V1__create_table.sql", true),
+              ("V2__create_index.sql", true),
+              ("V3__insert.sql", true),
+              ("R__create_index.sql", true),
+            ),
+          )
     yield ()
 
   dbTest("schemas are included in the search path"):
@@ -362,3 +395,9 @@ class DumboSpecCockroachDb extends DumboMigrationSpec:
 
   override def dbTest(name: String)(f: => IO[Unit]): Unit =
     test(name.tag(TestTags.CockroachDbTest))(dropSchemas >> f)
+
+  // The DDL of a non-transactional migration runs on a separate session while the migration transaction on the main
+  // session is still open. On CockroachDB that DDL does not complete (observed with v25.2), likely because schema
+  // changes wait for open transactions holding leases on the affected descriptors.
+  override def nonTransactionalDdlTest(name: String)(f: => IO[Unit]): Unit =
+    test(name.tag(TestTags.CockroachDbTest).ignore)(IO.unit)
